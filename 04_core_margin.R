@@ -1,0 +1,1 @@
+#script to pull out core and marginal areas

@@ -15,15 +15,15 @@
 
 library(sf)
 
-source("splines/stan/spline_functions.R")
+source("spline_functions.R")
 
 ### get data ####
 
-#run the modelSummaries_stan
+#run script 01
 
 #all those less than 5% should be removed.
 
-modelSummaries$mean <- ifelse(modelSummaries$mean<0.3,0,modelSummaries$mean)
+modelSummaries$mean <- ifelse(modelSummaries$mean<0.05,0,modelSummaries$mean)
 
 #also remove rare species
 speciesSummary <- modelSummaries %>%

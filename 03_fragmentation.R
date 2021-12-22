@@ -8,17 +8,13 @@
 # https://r-spatialecology.github.io/landscapemetrics/articles/articles/comparing_tools.html
 # https://onlinelibrary.wiley.com/doi/full/10.1111/ecog.04617
 
-# maybe check out SDMtools
-# https://rdrr.io/cran/SDMTools/man/
-
-
 #install.packages("landscapemetrics")
 library(landscapemetrics)
 library(raster)
 
 ### get data ####
 
-#run the modelSummaries_stan
+#run script 01
 
 ### subset data #####
 
@@ -30,10 +26,10 @@ modelSummaries$lon <- mtbsDF$lon[match(modelSummaries$MTB, mtbsDF$MTB)]
 modelSummaries$lat <- mtbsDF$lat[match(modelSummaries$MTB, mtbsDF$MTB)]
 modelSummaries <- subset(modelSummaries, !is.na(lon) & !is.na(lat))
 
-#are we subsetting?
+#just take first and last year
 modelSummaries_Limits <- subset(modelSummaries, Year %in% c(1990,2016))
 
-### metadata ####
+### lists ####
 
 allspecies <- sort(unique(modelSummaries_Limits$Species))
 
@@ -41,29 +37,82 @@ allYears <- sort(unique(modelSummaries_Limits$Year))
 
 utmProj <- "+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
 
-### convert to raster #####
+### example species #####
 
-#base grid
-speciesSummary <- subset(modelSummaries_Limits, 
-                         Species = allspecies[1] & Year == 2010)
-speciesRaster <- SpatialPixelsDataFrame(points = as.matrix(speciesSummary[,c("lon","lat")]),
-                                        data = data.frame(PA=speciesSummary$PA),
-                                        tolerance = 0.6,
-                                        proj4string = crs("+proj=longlat +datum=WGS84"))
+# speciesSummary <- subset(modelSummaries_Limits, 
+#                          Species = allspecies[1] & Year == 2010)
+# speciesRaster <- SpatialPixelsDataFrame(points = as.matrix(speciesSummary[,c("lon","lat")]),
+#                                         data = data.frame(PA=speciesSummary$PA),
+#                                         tolerance = 0.6,
+#                                         proj4string = crs("+proj=longlat +datum=WGS84"))
+# 
+# #make into a raster
+# speciesRaster <- raster(speciesRaster)
+# 
+# #convert to utm projection
+# speciesRaster <- projectRaster(speciesRaster, crs=utmProj, method="ngb")
+# plot(speciesRaster)
 
-#make into a raster
-speciesRaster <- raster(speciesRaster)
+### function ####
 
-### prelim ####
+#make raster stack for a species - layers represent each year
+#just take first and last year
+getFragStats <- function(species, modelSummaries_Limits){
+  
+    #data for 1990
+    speciesSummary <- modelSummaries_Limits %>%
+      filter(Species==species) %>%
+      filter(Year == 1990)
+    
+    speciesRaster <- SpatialPixelsDataFrame(points = as.matrix(speciesSummary[,c("lon","lat")]),
+                                            data = data.frame(PA=speciesSummary$PA),
+                                            tolerance = 0.6,
+                                            proj4string = crs("+proj=longlat +datum=WGS84"))
+    
+    #make into a raster
+    r1 <- raster(speciesRaster)
+    
+    #data for 2016
+    speciesSummary <- modelSummaries_Limits %>%
+      filter(Species==species) %>%
+      filter(Year == 2016)
+    
+    speciesRaster <- SpatialPixelsDataFrame(points = as.matrix(speciesSummary[,c("lon","lat")]),
+                                            data = data.frame(PA=speciesSummary$PA),
+                                            tolerance = 0.6,
+                                            proj4string = crs("+proj=longlat +datum=WGS84"))
+    
+    #make into a raster
+    r2 <- raster(speciesRaster)
+    
 
-plot(speciesRaster)
-check_landscape(speciesRaster)
+  #make stack  
+  speciesStack <- stack(list(r1,r2))
+  speciesStack <- projectRaster(speciesStack, crs=utmProj, method="ngb")
+  
+  calculate_lsm(speciesStack, 
+                what = c("lsm_l_ta",
+                         "lsm_c_pland",
+                         "lsm_c_clumpy"),
+                full_name = TRUE) %>%
+    add_column(Year = c(rep(1990,5),rep(2016,5))) %>%
+    add_column(Species = species)
+}
 
-#convert to utm projection
-speciesRaster <- projectRaster(speciesRaster, crs=utmProj, method="ngb")
-plot(speciesRaster)
 
-### metrics ####
+### apply ####
+
+#get realizations
+PAs <- lapply(modelSummaries_Limits$mean, function(x) rbinom(5,1,x))
+PA_matrix <- do.call(rbind,PAs)
+
+#apply it
+fragDF <- lapply(allspecies,function(x){
+                 applyFragStats(x, modelSummaries_Limits, summary = "annual")
+})
+fragDF <- do.call(rbind,fragDF)
+
+### Appendix: metric play ####
 
 #https://cran.r-project.org/web/packages/landscapemetrics/vignettes/getstarted.html
 
@@ -124,52 +173,3 @@ calculate_lsm(speciesRaster,
                        "lsm_c_pland",
                        "lsm_c_clumpy"),
               full_name = TRUE)
-
-# A tibble: 5 x 9
-# layer level     class    id metric        value name                    type                 function_name
-# <int> <chr>     <int> <int> <chr>         <dbl> <chr>                   <chr>                <chr>        
-# 1     1 class         0    NA clumpy        0.250 clumpiness index        aggregation metric   lsm_c_clumpy 
-# 2     1 class         1    NA clumpy        0.305 clumpiness index        aggregation metric   lsm_c_clumpy 
-# 3     1 class         0    NA pland        24.8   percentage of landscape area and edge metric lsm_c_pland  
-# 4     1 class         1    NA pland        75.2   percentage of landscape area and edge metric lsm_c_pland  
-# 5     1 landscape    NA    NA ta     38924148     total area              area and edge metric lsm_l_ta 
-
-### function ####
-
-
-
-#make raster stack for a species - layers represent each year
-getSpeciesStack <- function(species){
-  
-  speciesStack <- lapply(allYears, function(x){
-    
-    
-    speciesSummary <- modelSummaries_Limits %>%
-                        filter(Species==species) %>%
-                        filter(Year == x)
-    
-    speciesRaster <- SpatialPixelsDataFrame(points = as.matrix(speciesSummary[,c("lon","lat")]),
-                                            data = data.frame(PA=speciesSummary$PA),
-                                            tolerance = 0.6,
-                                            proj4string = crs("+proj=longlat +datum=WGS84"))
-    
-    #make into a raster
-    raster(speciesRaster)
-    
-  })
-  
-  speciesStack <- stack(speciesStack)
-  
-  calculate_lsm(speciesRaster, 
-                what = c("lsm_l_ta",
-                         "lsm_c_pland",
-                         "lsm_c_clumpy"),
-                full_name = TRUE)
-  
-}
-
-#convert to utm projection
-speciesRaster <- projectRaster(speciesRaster, crs=utmProj, method="ngb")
-plot(speciesRaster)
-
-plot(getSpeciesStack(allspecies[13]))

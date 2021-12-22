@@ -4,14 +4,14 @@ library(ggthemes)
 #sMon folder
 sMonFolder <- "C:/Users/db40fysa/Nextcloud/sMon/sMon-Analyses/Odonata_Git/sMon-insects"
 
-load("splines/mtbqsDF.RData")
+load(paste(sMonFolder,"splines/mtbqsDF.RData",sep="/"))
 names(mtbqsDF)[2] <- "MTB"
 mtbsDF <- subset(mtbqsDF,!duplicated(MTB))
 
 #### choose model directory ####
 
 #spatial-temporal and k = 7 + expanded grid
-modelDirectory <- "model-outputs/Odonata_stan_spline/v11"
+modelDirectory <- paste(sMonFolder,"model-outputs/Odonata_stan_spline/v11",sep="/")
 
 ### get list of models ####
 
@@ -41,10 +41,8 @@ modelSummaries <- stanFiles %>%
   map_df(readStanModel) %>%
   mutate(siteIndex = parse_number(Param))
 
-#get site and year information - using only MTBQ as the siteInfo
-#siteInfo_NAs <- readRDS("splines/siteInfo_NAs.rds") %>%
-#  select(!c(Species,SpeciesOrig))
-siteInfo_NAs <- readRDS("splines/siteInfo_NAs.rds") %>% #using the MTBQ data frame
+#complete site and year information 
+siteInfo_NAs <- readRDS(paste(sMonFolder,"splines/siteInfo_NAs.rds",sep="/")) %>%
     dplyr::select(!c(Species,SpeciesOrig)) %>%
     dplyr::filter(type!="extension")
 

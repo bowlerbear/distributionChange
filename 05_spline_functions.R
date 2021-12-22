@@ -150,18 +150,18 @@ applyRangeArea <- function(species, modelSummaries_Limits, summary = "change"){
     dplyr::mutate(x2016 = ifelse(is.na(x2016),1,x2016)) %>%
     dplyr::mutate(change = log((x2016)/(x1990+1)))  %>%
     dplyr::group_by(species) %>%
-    dplyr::summarise(myMedian = median(change), 
-                     lower = quantile(change, 0.25),
-                     upper = quantile(change, 0.75))
+    dplyr::summarise(medianChange = median(change), 
+                     lowerChange = quantile(change, 0.25),
+                     upperChange = quantile(change, 0.75))
     
   }else if (summary == "annual") {
     
   #summarise annual
    temp %>%
      dplyr::group_by(Species,Year) %>%
-     dplyr::summarise(myMedian = median(nuGrids), 
-                      lower = quantile(nuGrids, 0.25),
-                      upper = quantile(nuGrids, 0.75))
+     dplyr::summarise(medianArea = median(nuGrids), 
+                      lowerArea = quantile(nuGrids, 0.25),
+                      upperArea = quantile(nuGrids, 0.75))
     
   }
   
@@ -297,6 +297,46 @@ applyEcoregion <- function(species, modelSummaries_Limits, summary = "change"){
                        median2016 = quantile(prop2016,0.5),
                        lower2016 = quantile(prop2016,0.025),
                        upper2016 = quantile(prop2016,0.975))
+    
+  }
+  
+}
+
+### frag stats ####
+
+applyFragStats <- function(species, modelSummaries_Limits, summary = "change"){
+  
+  #apply to each realization
+  temp <- lapply(1:ncol(PA_matrix),function(i){
+    
+    modelSummaries_Limits$PA <- PA_matrix[,i] 
+    out <- getSpeciesStack(species, modelSummaries_Limits)
+    out$simNu <- i
+    return(out)
+  })
+  temp <- do.call(rbind,temp)
+  
+  #summarise change
+  if(summary == "change"){
+    temp %>%
+      dplyr::filter(class == 1 & metric == "clumpy") %>%
+      dplyr::select(Species,Year,value,simNu) %>%
+      tidyr::pivot_wider(everything(),names_from = Year, values_from = value) %>%
+      janitor::clean_names() %>%  
+      dplyr::mutate(change = x2016/x1990)  %>%
+      dplyr::group_by(species) %>%
+      dplyr::summarise(medianChange = median(change), 
+                       lowerChange = quantile(change, 0.25),
+                       upperChange = quantile(change, 0.75))
+    
+  }else if(summary == "annual"){
+    
+    #summarise annual
+    temp %>%
+      dplyr::group_by(Species,Year, class, metric,name,type,function_name) %>%
+      dplyr::summarise(medianMetric = median(value), 
+                       lowerMetric = quantile(value, 0.25),
+                       upperMetric = quantile(value, 0.75))
     
   }
   

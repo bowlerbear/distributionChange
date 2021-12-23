@@ -1,9 +1,16 @@
+#possibly useful packages
+library(AHMbook)
+
 #script to run a simulations
 
+# Set up starting landscape  -----------------------------------------------------------
 
-# Define parameters
-# Set up starting landscape
-# Set up starting occupancy
-# Impose change
-# Calc distribution metrics
-  
+
+dat <- simOccSpatial()
+
+
+# Impose change ------------------------------------------------------------------------
+
+
+
+# Calc distribution metrics ------------------------------------------------------------ 

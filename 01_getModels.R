@@ -26,8 +26,8 @@ stanFiles <- list.files(modelDirectory) %>% str_subset("m_fit")
 readStanModel <- function(file, get="psi"){
   
     readRDS(paste(modelDirectory,file,sep="/")) %>%
-    as_tibble() %>%
-    add_column(Param = row.names(temp)) %>%
+    as.data.frame() %>%
+    add_column(Param = row.names(.)) %>%
     dplyr::filter(str_detect(Param, get)) %>% 
     dplyr::filter(str_detect(Param, "beta_psi", negate = TRUE)) %>%
     add_column(File = rep(file,nrow(.))) %>%

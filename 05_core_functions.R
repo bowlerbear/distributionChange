@@ -341,3 +341,65 @@ applyFragStats <- function(species, modelSummaries_Limits, summary = "change"){
   }
   
 }
+
+
+getCoreRegions <- function(myspecies){
+  
+  speciesSummary <- modelSummaries %>%
+    filter(Species == myspecies) %>%
+    filter(Year %in% 1990:1995) %>%
+    dplyr::group_by(Species, MTB, lon, lat) %>%
+    dplyr::summarise(meanpsi = median(mean)) %>%
+    dplyr::mutate(normalpsi = (meanpsi-min(.$meanpsi))/(max(.$meanpsi)-min(.$meanpsi)))
+  
+  speciesPixels <- SpatialPixelsDataFrame(points = as.matrix(speciesSummary[,c("lon","lat")]),
+                                          data = data.frame(PA=speciesSummary$normalpsi),
+                                          tolerance = 0.6,
+                                          proj4string = crs("+proj=longlat +datum=WGS84"))
+  
+  #make into a raster
+  speciesRaster <- raster(speciesPixels)
+  
+  #for each raster cell, get mean class of surroundings
+  ## in a 3-by-3 window surrounding each focal cell 
+  rmean <- focal(speciesRaster, 
+                 w = matrix(1, ncol=3, nrow=3), 
+                 fun=mean, na.rm=TRUE)
+  #plot(rmean)
+  
+  #define core as all those surrounded by 50% presences
+  speciesRasterCore <- rmean
+  speciesRasterCore[speciesRasterCore > 0.5] <- 1 #indicator for core sites
+  speciesRasterCore[speciesRasterCore < 0.5] <- 0.5 #indicator for marginal sites
+  speciesRasterCore[is.na(speciesRaster)] <- NA
+  speciesRasterCore[speciesRaster < 0.05] <- 0 #absent sites
+  plot(speciesRasterCore)
+  
+  #convert back into a data frame
+  coreDF <- as.data.frame(speciesRasterCore, xy=TRUE)
+  coreDF$Obs <- as.data.frame(speciesRaster)[,1] #original observation
+  coreDF$cellNu <- cellFromXY(speciesRaster, coreDF[,c("x","y")])
+  coreDF <- subset(coreDF, !is.na(layer)) #remove sites beyond german border
+  
+  #clean marginal information
+  coreDF$Core <- ifelse(coreDF$layer==1,"core",
+                        ifelse(coreDF$layer==0.5, "marginal", "absent"))
+  
+  #add on other data
+  coreDF$Species <- myspecies
+  
+  
+  #map to mtbqs
+  mtbPixels <- SpatialPixelsDataFrame(points = as.matrix(speciesSummary[,c("lon","lat")]),
+                                      data = data.frame(MTB = as.numeric(speciesSummary$MTB)),
+                                      tolerance = 0.6,
+                                      proj4string = crs("+proj=longlat +datum=WGS84"))
+  
+  mtbRaster <- raster(mtbPixels)
+  mtbDF <- as.data.frame(mtbRaster, xy=TRUE)
+  mtbDF$cellNu <- cellFromXY(mtbRaster, mtbDF[,c("x","y")])
+  coreDF <- left_join(coreDF, mtbDF[,3:4], by="cellNu")
+  
+  return(coreDF)
+  
+}

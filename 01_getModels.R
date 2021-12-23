@@ -1,8 +1,11 @@
 library(tidyverse)
 library(ggthemes)
 
-#sMon folder
+### sMon folder ####
+
 sMonFolder <- "C:/Users/db40fysa/Nextcloud/sMon/sMon-Analyses/Odonata_Git/sMon-insects"
+
+### mtbq info ####
 
 load(paste(sMonFolder,"splines/mtbqsDF.RData",sep="/"))
 names(mtbqsDF)[2] <- "MTB"
@@ -24,17 +27,13 @@ readStanModel <- function(file, get="psi"){
   
   temp <- as.data.frame(readRDS(paste(modelDirectory,file,sep="/")))
   
-  #get rows for the parameter of interest
-  temp$Param <- row.names(temp)
-  temp <- subset(temp, grepl(get,temp$Param))
-  temp <- subset(temp, !grepl("beta_psi",temp$Param))
-                 
-  #get species name
-  temp$File <- file
-  temp$Species <- gsub("m_fit_summary_spacetime_","",temp$File)
-  temp$Species <- gsub(".rds","",temp$Species)
-  
-  return(temp)
+  temp %>%
+    add_column(Param = row.names(temp)) %>%
+    dplyr::filter(str_detect(Param, get)) %>% 
+    dplyr::filter(str_detect(Param, "beta_psi", negate = TRUE)) %>%
+    add_column(File = rep(file,nrow(.))) %>%
+    dplyr::mutate(Species = gsub("m_fit_summary_spacetime_","",File)) %>%
+    dplyr::mutate(Species = gsub(".rds","",Species))
 }
 
 modelSummaries <- stanFiles %>%

@@ -15,7 +15,7 @@
 
 library(sf)
 
-source("spline_functions.R")
+source("05_core_functions.R")
 
 ### get data ####
 

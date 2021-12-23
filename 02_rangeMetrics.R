@@ -54,9 +54,9 @@ modelSummaries_Limits <- subset(modelSummaries, Year %in% c(1990,2016))
 
 allspecies <- sort(unique(modelSummaries$Species))
 
-allYears <- 1990:2016
+allYears <- sort(unique(modelSummaries$Year))
 
-### application ####
+### area ####
 
 #get realizations
 PAs <- lapply(modelSummaries_Limits$mean, function(x) rbinom(100,1,x))
@@ -79,6 +79,7 @@ ggplot(areaChanges)+
   geom_hline(yintercept=0, linetype="dashed")+
   theme_few()
 
+### lat extent ####
 #lat extent
 rangeExtents <- lapply(allspecies, function(x){
   applyRangeExtent(x,modelSummaries_Limits)
@@ -103,6 +104,8 @@ ggplot(rangeExtents)+
   theme(axis.text.y = element_text(size=rel(0.6)))
   
 #maximum y changes the most
+
+### hull ####
 
 #hull
 hullChanges <- lapply(allspecies, function(x){

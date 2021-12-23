@@ -90,6 +90,7 @@ getFragStats <- function(species, modelSummaries_Limits){
   speciesStack <- stack(list(r1,r2))
   speciesStack <- projectRaster(speciesStack, crs=utmProj, method="ngb")
   
+  #calc metrics
   calculate_lsm(speciesStack, 
                 what = c("lsm_l_ta",
                          "lsm_c_pland",

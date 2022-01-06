@@ -114,7 +114,7 @@ getConcaveMan <- function(species, modelSummaries_Limits){
       sp_poly <- concaveman::concaveman(ydat)
       germanOutline_sf <- st_transform(germanOutline, st_crs(ydat))
       sp_poly_cut <- st_intersection(sp_poly, germanOutline_sf)
-      plot(sp_poly_cut)
+      #plot(sp_poly_cut)
       rangeSize <- as.numeric(st_area(sp_poly))#m2 units
       return(rangeSize)
       
@@ -278,7 +278,7 @@ applyEcoregion <- function(species, modelSummaries_Limits, summary = "change"){
   if(summary=="change"){
   temp %>%
     dplyr::group_by(Naturraum,Species,simNu) %>%
-    dplyr::summarize(change = (nu[Year==2016]-nu[Year==1990]+1)/total[Year==1990]) %>%
+    dplyr::summarize(change = (nu[Year==2016]-nu[Year==1990]+1)/(total[Year==1990])) %>%
     dplyr::group_by(Species,Naturraum) %>%
     dplyr::summarise(medianChange = quantile(change,0.5),
                      lowerChange = quantile(change,0.025),

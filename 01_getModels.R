@@ -13,8 +13,7 @@ mtbsDF <- subset(mtbqsDF,!duplicated(MTB))
 
 #### choose model directory ####
 
-#spatial-temporal and k = 7 + expanded grid
-modelDirectory <- paste(sMonFolder,"model-outputs/Odonata_stan_spline/v11",sep="/")
+modelDirectory <- paste(sMonFolder,"model-outputs/Odonata_stan_spline/v16",sep="/")
 
 ### get list of models ####
 

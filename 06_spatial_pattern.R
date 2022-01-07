@@ -38,3 +38,21 @@ sr
 tmap_save(sr, "plots/maps_speciesrichness.png",height=6,width=10)
 
 ### community turnover ####
+
+
+### plot example species ###
+
+exampleData <- modelSummaries_Limits %>% 
+                filter(Species %in% c("Anax imperator",
+                                      "Crocothemis erythraea",
+                                      "Lestes sponsa",
+                                      "Sympetrum danae")) %>%
+                rename(Occupancy = "mean") 
+
+g1 <- ggplot(exampleData) +
+  geom_point(aes(x = x_MTB, y = y_MTB, colour = Occupancy)) +
+  facet_grid(Year ~ Species) +
+  theme_map() +
+  scale_colour_viridis_c(direction = -1)
+
+ggsave(g1,"plots/maps_examplespecies.png",height=6,width=10)

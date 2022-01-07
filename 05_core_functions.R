@@ -304,13 +304,56 @@ applyEcoregion <- function(species, modelSummaries_Limits, summary = "change"){
 
 ### frag stats ####
 
+getFragStats <- function(species, modelSummaries_Limits){
+  
+  #data for 1990
+  speciesSummary <- modelSummaries_Limits %>%
+    filter(Species==species) %>%
+    filter(Year == 1990)
+  
+  speciesRaster <- SpatialPixelsDataFrame(points = as.matrix(speciesSummary[,c("lon","lat")]),
+                                          data = data.frame(PA=speciesSummary$PA),
+                                          tolerance = 0.6,
+                                          proj4string = crs("+proj=longlat +datum=WGS84"))
+  
+  #make into a raster
+  r1 <- raster(speciesRaster)
+  
+  #data for 2016
+  speciesSummary <- modelSummaries_Limits %>%
+    filter(Species==species) %>%
+    filter(Year == 2016)
+  
+  speciesRaster <- SpatialPixelsDataFrame(points = as.matrix(speciesSummary[,c("lon","lat")]),
+                                          data = data.frame(PA=speciesSummary$PA),
+                                          tolerance = 0.6,
+                                          proj4string = crs("+proj=longlat +datum=WGS84"))
+  
+  #make into a raster
+  r2 <- raster(speciesRaster)
+  
+  
+  #make stack  
+  speciesStack <- stack(list(r1,r2))
+  speciesStack <- projectRaster(speciesStack, crs=utmProj, method="ngb")
+  
+  #calc metrics
+  calculate_lsm(speciesStack, 
+                what = c("lsm_l_ta",
+                         "lsm_c_pland",
+                         "lsm_c_clumpy"),
+                full_name = TRUE) %>%
+    add_column(Year = c(rep(1990,5),rep(2016,5))) %>%
+    add_column(Species = species)
+}
+
 applyFragStats <- function(species, modelSummaries_Limits, summary = "change"){
   
   #apply to each realization
   temp <- lapply(1:ncol(PA_matrix),function(i){
     
     modelSummaries_Limits$PA <- PA_matrix[,i] 
-    out <- getSpeciesStack(species, modelSummaries_Limits)
+    out <- getFragStats(species, modelSummaries_Limits)
     out$simNu <- i
     return(out)
   })
@@ -333,7 +376,7 @@ applyFragStats <- function(species, modelSummaries_Limits, summary = "change"){
     
     #summarise annual
     temp %>%
-      dplyr::group_by(Species,Year, class, metric,name,type,function_name) %>%
+      dplyr::group_by(Species,Year,class, metric,name,type,function_name) %>%
       dplyr::summarise(medianMetric = median(value), 
                        lowerMetric = quantile(value, 0.25),
                        upperMetric = quantile(value, 0.75))
@@ -342,6 +385,8 @@ applyFragStats <- function(species, modelSummaries_Limits, summary = "change"){
   
 }
 
+
+### core regions ####
 
 getCoreRegions <- function(myspecies){
   

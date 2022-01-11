@@ -27,23 +27,21 @@ utmProj <- "+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_
 
 ### apply function #####
 
-temp <- getCoreRegions(allspecies[5])
+#define MTBs as core or marginal
+coreDF <- allspecies %>%
+        map(.,getCoreRegions) %>%
+        reduce(rbind)
 
-#get realizations
+#get realizations of occupancy
 PAs <- lapply(modelSummaries_Limits$mean, function(x) rbinom(100,1,x))
 PA_matrix <- do.call(rbind,PAs)
 
-#add on data
-modelSummaries_Limits$PA <- PA_matrix[,1] 
-modelSummaries_Limits$Core <- temp$Core[match(modelSummaries_Limits$MTB, temp$MTB)]
+#apply function
+coreSummary <- allspecies %>%
+                map(.,getCoreCalc) %>%
+                reduce(rbind)
 
-#summarize
-coreSummary <- modelSummaries_Limits %>%
-                  filter(!is.na(Core)) %>%
-                  group_by(Core, Year) %>%
-                  summarize(occ = sum(PA), total= length(PA)) %>%
-                  mutate(prop = occ/total)
-
+saveRDS(coreSummary, file="outputs/coreChanges.rds")
 
 ### appendix ####
 #other possibilities

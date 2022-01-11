@@ -417,17 +417,17 @@ getCoreRegions <- function(myspecies){
   speciesRasterCore[speciesRasterCore > 0.5] <- 1 #indicator for core sites
   speciesRasterCore[speciesRasterCore < 0.5] <- 0.5 #indicator for marginal sites
   speciesRasterCore[is.na(speciesRaster)] <- NA
-  speciesRasterCore[speciesRaster < 0.01] <- 0 #absent sites
+  speciesRasterCore[speciesRaster < 0.2] <- 0 #absent sites
   plot(speciesRasterCore)
   
   
   #plot example
   # library(tmap)
-  # t1 <- tm_shape(speciesRaster)+
-  #   tm_raster(style="cont",legend.show=FALSE)
-  # t2 <- tm_shape(speciesRasterCore)+
-  #   tm_raster(legend.show=FALSE)
-  # tmap_arrange(t1,t2,ncol=2)
+  #  t1 <- tm_shape(speciesRaster)+
+  #    tm_raster(style="cont",legend.show=FALSE)
+  #  t2 <- tm_shape(speciesRasterCore)+
+  #    tm_raster(legend.show=FALSE)
+  #  tmap_arrange(t1,t2,ncol=2)
   
   
   #convert back into a data frame
@@ -456,5 +456,33 @@ getCoreRegions <- function(myspecies){
   coreDF <- left_join(coreDF, mtbDF[,3:4], by="cellNu")
   
   return(coreDF)
+  
+}
+
+getCoreCalc <- function(myspecies){
+  
+  coreDF_species <- subset(coreDF, Species== myspecies)
+  modelSummaries_Limits$Core <- coreDF_species$Core[match(modelSummaries_Limits$MTB, 
+                                                          coreDF_species$MTB)]
+  
+  #for each realization do the following
+  lapply(1:dim(PA_matrix)[2], function(i){
+    
+    modelSummaries_Limits %>%
+      add_column(PA = PA_matrix[,i]) %>%
+      filter(!is.na(Core)) %>%
+      filter(Species==myspecies) %>%
+      group_by(Core, Year) %>%
+      summarize(occ = sum(PA), total= length(PA)) %>%
+      mutate(prop = occ/total) %>%
+      add_column(simNu = i)
+    
+  }) %>% #summarise
+    bind_rows() %>%
+    group_by(Core,Year) %>%
+    summarize(medianProp = quantile(prop,0.5), 
+              lowerProp = quantile(prop,0.025),
+              upperProp = quantile(prop,0.975)) %>%
+    add_column(Species = myspecies)
   
 }

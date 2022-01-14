@@ -13,7 +13,7 @@ mtbsDF <- subset(mtbqsDF,!duplicated(MTB))
 
 #### choose model directory ####
 
-modelDirectory <- paste(sMonFolder,"model-outputs/Odonata_stan_spline/v16",sep="/")
+modelDirectory <- paste(sMonFolder,"model-outputs/Odonata_stan_spline/v17",sep="/")
 
 ### get list of models ####
 
@@ -45,6 +45,7 @@ siteInfo_NAs <- readRDS(paste(sMonFolder,"splines/siteInfo_NAs.rds",sep="/")) %>
 
 #merge
 modelSummaries <- inner_join(modelSummaries,siteInfo_NAs, by="siteIndex")
+modelSummaries$Species <- sapply(modelSummaries$Species, function(x)strsplit(x,"_")[[1]][1])
 
 #### check time-series ####
 

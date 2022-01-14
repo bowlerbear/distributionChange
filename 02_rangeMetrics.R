@@ -23,21 +23,30 @@ source("05_core_functions.R")
 ### get data ####
 
 #run script 01
-modelSummaries$Species <- sapply(modelSummaries$Species, function(x)strsplit(x,"_")[[1]][1])
+source("01_getModels.R")
 
-#all those less than 5% should be removed.
+### subset ####
 
-modelSummaries$mean <- ifelse(modelSummaries$mean<0.05,0,modelSummaries$mean)
-
-#also remove rare species
+#remove rare species
 speciesSummary <- modelSummaries %>%
                     dplyr::group_by(Species) %>%
                     dplyr::summarise(medOccu = median(mean)) %>%
                     arrange(medOccu) %>%
-                    filter(medOccu>0.05)
-
+                    filter(medOccu>0)
+#we lose 6 species
 modelSummaries <- subset(modelSummaries, Species %in% speciesSummary$Species)
+
 sort(unique(modelSummaries$Species))
+
+#remove S. flaveolum - migratory and fluctuates alot!
+modelSummaries <- subset(modelSummaries, Species!="Sympetrum flaveolum")
+
+#weird maps
+modelSummaries <- subset(modelSummaries, !Species %in% c("Anax ephippiger",
+                                                    "Boyeria irene"))
+
+#all those occupancies than 5% should be absent
+modelSummaries$mean <- ifelse(modelSummaries$mean<0.05,0,modelSummaries$mean)
 
 ### GIS data ####
 
@@ -80,10 +89,32 @@ areaChanges %>%
   geom_pointrange(aes(x = species, y = medianChange, ymin = lowerChange, max = upperChange))+
   coord_flip()+
   geom_hline(yintercept=0, linetype="dashed")+
-  ylab("Relative area change")+
-  theme(axis.text.y = element_text(size=rel(0.7)))
+  ylab("Relative change in AOCC")+
+  theme(axis.text.y = element_text(size=rel(0.6)))
 
 ggsave("plots/areaChange.png")
+
+### hull ####
+
+#hull
+hullChanges <- lapply(allspecies, function(x){
+  applyConcaveMan(x,modelSummaries_Limits)})
+hullChanges  <- do.call(rbind,hullChanges) %>%
+  mutate(species = fct_reorder(species, desc(medianChange))) 
+saveRDS(hullChanges,file="outputs/concavehullChanges.rds")
+
+#plot
+hullChanges %>%
+  filter(medianChange < 10) %>%
+  ggplot()+
+  geom_pointrange(aes(x = species, y = medianChange, ymin = lowerChange, 
+                      max = upperChange))+
+  coord_flip()+
+  geom_hline(yintercept=0, linetype="dashed") +
+  ylab("Relative change in EOCC")+
+  theme(axis.text.y = element_text(size=rel(0.7)))
+
+ggsave("plots/hullChange.png")
 
 
 ### lat extent ####
@@ -91,16 +122,18 @@ ggsave("plots/areaChange.png")
 #lat extent
 rangeExtents <- lapply(allspecies, function(x){
   applyRangeExtent(x,modelSummaries_Limits)
-  })
+})
 rangeExtents  <- do.call(rbind,rangeExtents)
 saveRDS(rangeExtents,file="outputs/rangeExtents.rds")
 
 #plot
 rangeExtents %>%
+  filter(species %in% hullChanges$species[hullChanges$medianChange<10]) %>%
   pivot_longer(contains("_"),names_to="type", values_to="change") %>%
   separate(type, c("quantile","extent")) %>%
   filter(quantile=="median") %>%
   mutate(extent = ifelse(extent=="Max","upper","lower")) %>%
+  mutate(species = factor(species, levels(factor(hullChanges$species[hullChanges$medianChange<10])))) %>%
   ggplot()+
   geom_col(aes(x = species, y = change, fill=extent))+
   scale_fill_brewer("Position",type="qual") +
@@ -108,49 +141,70 @@ rangeExtents %>%
   coord_flip()+
   geom_hline(yintercept=0, linetype="dashed")+
   theme(axis.text.y = element_text(size=rel(0.6)))
-  
+
 ggsave("plots/latitudeChange.png")
-
-#maximum y changes the most
-
-### hull ####
-
-#hull
-hullChanges <- lapply(allspecies, function(x){
-  applyConcaveMan(x,modelSummaries_Limits)})
-hullChanges  <- do.call(rbind,hullChanges)
-save(hullChanges,file="outputs/hullChanges.rds")
-
-#plot
-hullChanges %>%
-  mutate(species = fct_reorder(species, desc(medianChange))) %>%
-  ggplot()+
-  geom_pointrange(aes(x = species, y = medianChange, ymin = lowerChange, 
-                      max = upperChange))+
-  coord_flip()+
-  geom_hline(yintercept=0, linetype="dashed") +
-  ylab("Relative hull change")+
-  theme(axis.text.y = element_text(size=rel(0.7)))
-
-ggsave("plots/hullChange.png")
 
 ### relationships ####
 
 allChanges <- inner_join(hullChanges,areaChanges,
                          by=c("species"),
                          suffix = c("_extent","_area"))
+allChanges$Direction <- ifelse(allChanges$medianChange_area>0, "Winner", "Losers")
 
-ggplot(data = subset(allChanges, medianChange_extent<3),
-       aes(x = medianChange_area,y = medianChange_extent)) + 
+g1 <- ggplot(data = subset(allChanges, medianChange_extent<10),
+       aes(x = medianChange_area,y = medianChange_extent, colour=Direction)) + 
   geom_point() + 
   #geom_text(data=subset(allChanges,abs(medianChange_extent)>2),
   #          aes(x = medianChange_area,y = medianChange_extent,label=Species))+
-  geom_errorbar(aes(ymin = lowerChange_extent,ymax = upperChange_extent)) + 
-  geom_errorbarh(aes(xmin = lowerChange_area, xmax = upperChange_area))+
+  geom_errorbar(aes(ymin = lowerChange_extent,ymax = upperChange_extent, colour=Direction)) + 
+  geom_errorbarh(aes(xmin = lowerChange_area, xmax = upperChange_area, colour=Direction))+
   geom_hline(linetype="dashed",yintercept=0)+
   geom_vline(linetype="dashed",xintercept=0)+
+  scale_color_viridis_d()+
   xlab("Change in AOCC") + ylab("Change in EOCC")+
   theme_few()
+g1
+
+ggsave("plots/eoccChange_vs_aoccChange.png")
+
+
+### regression ####
+
+#Deming regression or orthogonal regression
+library(deming)
+
+#get error
+allChanges$sd_extent <- (allChanges$upperChange_extent - allChanges$medianChange_extent)/2
+allChanges$sd_area <- (allChanges$upperChange_area - allChanges$medianChange_area)/2
+
+model_winners <- deming(medianChange_extent ~ exp(medianChange_area), 
+       xstd = sd_area, ystd = sd_extent, 
+       data = subset(allChanges, medianChange_area > 0 & medianChange_extent < 10))
+
+model_losers <- deming(medianChange_extent ~ medianChange_area, 
+                        xstd = sd_area, ystd = sd_extent, 
+                        data = subset(allChanges, medianChange_area<0 & medianChange_extent<10))
+
+
+#https://stackoverflow.com/questions/68684079/restrict-range-of-geom-ablineslope-somenumber
+
+g1 +
+  # geom_abline(aes(xmax=5),slope = 1,color='red') +
+  geom_function(fun=Vectorize(function(x) {
+    if(x > 0)
+      return(NA)
+    else
+      return(x * model_losers$coefficients[2] + model_losers$coefficients[1])
+  }), color = viridis::viridis(2)[1]) +
+  
+  # geom_abline(aes(xmin=5),slope = 1,intercept = 3,color='blue') +
+  geom_function(fun=Vectorize(function(x) {
+    if(x > 0)
+      return(exp(x) * model_winners$coefficients[2] + model_winners$coefficients[1])
+    else
+      return(NA)
+  }), color = viridis::viridis(2)[2])
+
 
 ggsave("plots/eoccChange_vs_aoccChange.png")
 
@@ -230,6 +284,7 @@ ggsave("plots/ecoChange.png",height=5.5,width=7)
 
 ### nationwide-mean ####
 
+#occupancy proportion
 modelSummaries_Limits %>%
   group_by(Species,Year) %>%
   summarise(prop = sum(mean)/length(mean))%>%
@@ -244,6 +299,22 @@ modelSummaries_Limits %>%
   ylab("Occupancy proportion")
 
 ggsave("plots/nationChange.png")
+
+#occupancy extent
+modelSummaries_Limits %>%
+  group_by(Species,Year) %>%
+  summarise(medianExtent = weighted.mean(y_MTB, mean)) %>%
+  group_by(Species) %>%
+  mutate(change=medianExtent[Year==2016]-medianExtent[Year==1990]) %>%
+  ungroup()%>%
+  ggplot(aes(x=Year,y=medianExtent,group=Species,colour=change))+
+  scale_colour_gradient2(low="green",high="purple")+
+  geom_point(alpha=0.2)+
+  geom_line(size=2,alpha=0.5)+
+  scale_x_continuous(breaks=c(1990,2016),labels=c(1990,2016))+
+  ylab("Extent position")
+
+ggsave("plots/nationextentChange.png")
 
 ### state  analysis ####
 

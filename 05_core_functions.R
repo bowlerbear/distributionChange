@@ -148,7 +148,7 @@ applyRangeArea <- function(species, modelSummaries_Limits, summary = "change"){
     tidyr::complete() %>%
     dplyr::mutate(x1990 = ifelse(is.na(x1990),1,x1990)) %>%
     dplyr::mutate(x2016 = ifelse(is.na(x2016),1,x2016)) %>%
-    dplyr::mutate(change = log((x2016)/(x1990+1)))  %>%
+    dplyr::mutate(change = log((x2016+5)/(x1990+5)))  %>%
     dplyr::group_by(species) %>%
     dplyr::summarise(medianChange = median(change), 
                      lowerChange = quantile(change, 0.25),
@@ -234,7 +234,7 @@ applyConcaveMan <- function(species, modelSummaries_Limits, summary = "change"){
   temp %>%
     tidyr::pivot_wider(everything(),names_from = Year, values_from = rangeMan) %>%
     janitor::clean_names() %>%  
-    dplyr::mutate(change = log((x2016+1)/(x1990+1)))  %>%
+    dplyr::mutate(change = log((x2016+10)/(x1990+10)))  %>%
     dplyr::group_by(species) %>%
     dplyr::summarise(medianChange = median(change), 
                      lowerChange = quantile(change, 0.25),
@@ -459,15 +459,14 @@ getCoreRegions <- function(myspecies){
   
 }
 
-getCoreCalc <- function(myspecies){
+getCoreCalc <- function(myspecies, summary="annual"){
   
   coreDF_species <- subset(coreDF, Species== myspecies)
   modelSummaries_Limits$Core <- coreDF_species$Core[match(modelSummaries_Limits$MTB, 
                                                           coreDF_species$MTB)]
   
   #for each realization do the following
-  lapply(1:dim(PA_matrix)[2], function(i){
-    
+temp <- lapply(1:dim(PA_matrix)[2], function(i){
     modelSummaries_Limits %>%
       add_column(PA = PA_matrix[,i]) %>%
       filter(!is.na(Core)) %>%
@@ -476,13 +475,34 @@ getCoreCalc <- function(myspecies){
       summarize(occ = sum(PA), total= length(PA)) %>%
       mutate(prop = occ/total) %>%
       add_column(simNu = i)
-    
-  }) %>% #summarise
-    bind_rows() %>%
-    group_by(Core,Year) %>%
-    summarize(medianProp = quantile(prop,0.5), 
+  }) %>% bind_rows() %>% ungroup() 
+
+
+if(summary=="annual"){
+  
+    temp %>%
+      dplyr::group_by(Core,Year) %>%
+      dplyr::summarize(medianProp = quantile(prop,0.5), 
               lowerProp = quantile(prop,0.025),
               upperProp = quantile(prop,0.975)) %>%
-    add_column(Species = myspecies)
+      add_column(Species = myspecies)
   
+}else if(summary=="change"){
+  
+    temp %>% 
+      dplyr::select(Core, Year, prop, simNu) %>%
+      dplyr::group_by(Core,Year, simNu) %>%
+      tidyr::pivot_wider(names_from="Year", values_from="prop") %>%
+      janitor::clean_names(case = "title") %>%
+      dplyr::mutate(change = boot::logit(X2016) - boot::logit(X1990)) %>%
+      dplyr::mutate(change = ifelse(is.infinite(change),0, change)) %>%
+      dplyr::mutate(change = ifelse(is.na(change),0, change)) %>%
+      dplyr::group_by(Core) %>%
+      dplyr::summarize(medianChange = quantile(change,0.5), 
+              lowerChange = quantile(change,0.025),
+              upperChange = quantile(change,0.975)) %>%
+      add_column(Species = myspecies)
+    
+}
+
 }

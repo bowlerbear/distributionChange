@@ -52,21 +52,21 @@ speciesrichnessChange <- modelSummaries_Limits %>%
 #where do species increase
 speciesrichnessIncrease <- speciesrichnessChange %>% 
   group_by(MTB) %>%
-  summarise(nuIncrease=sum(increase)) %>%
+  summarise(increase=sum(x2016[increase==1])-x1990[increase==1]) %>%
   merge(mtbs,.)
 
 sr_I <- tm_shape(speciesrichnessIncrease)+
-  tm_fill(col="nuIncrease", palette="YlOrRd",
+  tm_fill(col="increase", palette="YlOrRd",
           style="cont")
 
 #where do species decrease
 speciesrichnessDecrease <- speciesrichnessChange %>% 
   group_by(MTB) %>%
-  summarise(nuDecrease=sum(decrease)) %>%
+  summarise(decrease=sum(x2016[decrease==1])-x1990[decrease==1]) %>%
   merge(mtbs,.)
 
 sr_D <- tm_shape(speciesrichnessDecrease)+
-  tm_fill(col="nuDecrease", palette="YlOrRd",
+  tm_fill(col="decrease", palette="YlOrRd",
           style="cont")
 
 sr_C <- tmap_arrange(sr_I, sr_D)

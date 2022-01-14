@@ -3,7 +3,7 @@
 library(sf)
 library(tmap)
 
-tmaptools::palette_explorer()
+#tmaptools::palette_explorer()
 
 ### mtb grid #####
 
@@ -16,7 +16,7 @@ mtbs <- st_read(dsn="C:/Users/db40fysa/Nextcloud/sMon/sMon-Analyses/MTB_Q Inform
         rename(MTB = "Value")
 
 
-### change in richness ####
+### annual richness ####
 
 speciesrichness <- modelSummaries_Limits %>% 
                     group_by(Year,MTB) %>%
@@ -36,6 +36,43 @@ sr <- tm_shape(speciesrichness)+
 sr
 
 tmap_save(sr, "plots/maps_speciesrichness.png",height=6,width=10)
+
+### rare vs common species ####
+
+speciesrichnessChange <- modelSummaries_Limits %>% 
+  dplyr::select(mean, Species, MTB, Year) %>%
+  dplyr::group_by(MTB, Species) %>%
+  pivot_wider(names_from="Year", values_from="mean") %>%
+  ungroup() %>%
+  janitor::clean_names() %>%
+  dplyr::mutate(increase = ifelse(x2016>x1990,1,0),
+                decrease= ifelse(x1990>=x2016,1,0)) %>%
+  rename(MTB = "mtb")
+
+#where do species increase
+speciesrichnessIncrease <- speciesrichnessChange %>% 
+  group_by(MTB) %>%
+  summarise(nuIncrease=sum(increase)) %>%
+  merge(mtbs,.)
+
+sr_I <- tm_shape(speciesrichnessIncrease)+
+  tm_fill(col="nuIncrease", palette="YlOrRd",
+          style="cont")
+
+#where do species decrease
+speciesrichnessDecrease <- speciesrichnessChange %>% 
+  group_by(MTB) %>%
+  summarise(nuDecrease=sum(decrease)) %>%
+  merge(mtbs,.)
+
+sr_D <- tm_shape(speciesrichnessDecrease)+
+  tm_fill(col="nuDecrease", palette="YlOrRd",
+          style="cont")
+
+sr_C <- tmap_arrange(sr_I, sr_D)
+sr_C
+
+tmap_save(sr_C, "plots/maps_speciesrichnessChange.png",height=6,width=10)
 
 ### community turnover ####
 

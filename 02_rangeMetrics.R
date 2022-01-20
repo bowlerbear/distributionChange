@@ -35,6 +35,7 @@ speciesSummary <- modelSummaries %>%
                     dplyr::summarise(medOccu = median(mean)) %>%
                     arrange(medOccu) %>%
                     filter(medOccu>0)
+
 #we lose 6 species
 modelSummaries <- subset(modelSummaries, Species %in% speciesSummary$Species)
 
@@ -43,7 +44,7 @@ sort(unique(modelSummaries$Species))
 #remove S. flaveolum - migratory and fluctuates alot!
 modelSummaries <- subset(modelSummaries, Species!="Sympetrum flaveolum")
 
-#weird maps
+#weird maps at the moment - check later
 modelSummaries <- subset(modelSummaries, !Species %in% c("Anax ephippiger",
                                                     "Boyeria irene"))
 
@@ -60,9 +61,9 @@ meanArea <- mean(area)
 totalArea <- as.numeric(sum(area))
 
 #get germany outline
-germanOutline <- raster::getData(name='GADM', country='DE',level=0)
-germanOutline <- st_as_sf(germanOutline)
-germanOutline <- st_transform(germanOutline,equalProj)
+germanOutline <- raster::getData(name='GADM', country='DE',level=0) %>%
+  st_as_sf(germanOutline) %>%
+  st_transform(germanOutline,equalProj)
 
 #add on lon and lat
 modelSummaries$lon <- mtbsDF$lon[match(modelSummaries$MTB, mtbsDF$MTB)]
@@ -85,14 +86,14 @@ PAs <- lapply(modelSummaries_Limits$mean, function(x) rbinom(100,1,x))
 PA_matrix <- do.call(rbind,PAs)
 
 #area
-areaChanges <- lapply(allspecies, function(x){
-  applyRangeArea(x,modelSummaries_Limits, summary="annual")})
-areaChanges  <- do.call(rbind,areaChanges)
-saveRDS(areaChanges,file="outputs/areaCAnnual.rds")
+areaAnnual <- lapply(allspecies, function(x){
+  applyRangeArea(x,modelSummaries_Limits, summary="annual")}) %>%
+  reduce(rbind)
+saveRDS(areaAnnual,file="outputs/areaCAnnual.rds")
 
 areaChanges <- lapply(allspecies, function(x){
-  applyRangeArea(x,modelSummaries_Limits)})
-areaChanges  <- do.call(rbind,areaChanges)
+  applyRangeArea(x,modelSummaries_Limits)})%>%
+  reduce(rbind)
 saveRDS(areaChanges,file="outputs/areaChanges.rds")
 
 #plot
@@ -107,6 +108,7 @@ areaChanges %>%
 
 ggsave("plots/areaChange.png")
 
+#cal some summary statistics
 nrow(subset(areaChanges, medianChange>0))
 nrow(subset(areaChanges, medianChange<0))
 
@@ -117,8 +119,8 @@ summary(subset(areaChanges, medianChange<0)$medianChange)
 
 #hull
 hullChanges <- lapply(allspecies, function(x){
-  applyConcaveMan(x,modelSummaries_Limits)})
-hullChanges  <- do.call(rbind,hullChanges) %>%
+  applyConcaveMan(x,modelSummaries_Limits)})%>%
+  reduce(rbind)
   mutate(species = fct_reorder(species, desc(medianChange))) 
 saveRDS(hullChanges,file="outputs/concavehullChanges.rds")
 
@@ -135,6 +137,7 @@ hullChanges %>%
 
 ggsave("plots/hullChange.png")
 
+#cal some statistics
 nrow(subset(hullChanges, medianChange>0))
 nrow(subset(hullChanges, medianChange<0))
 
@@ -143,31 +146,32 @@ summary(subset(hullChanges, medianChange<0)$medianChange)
 
 ### alpha hull ####
 
-#not 10, 14, 19 etc...
+#not work for 10, 14, 19 etc...
 hullChanges <- lapply(allspecies[15:68], function(x){
   applyAlphaHull(x,modelSummaries_Limits)
   print(x)
-  })
-hullChanges  <- do.call(rbind,hullChanges) %>%
+  })%>%
+  reduce(rbind) %>%
   mutate(species = fct_reorder(species, desc(medianChange))) 
 
 ### MCP hull ####
-#minimum convex hull
+
+# MCP = minimum convex hull
 
 #change
 hullChanges <- lapply(allspecies, function(x){
   applyMCPHull(x,modelSummaries_Limits)
-})
-hullChanges  <- do.call(rbind,hullChanges) %>%
+})%>%
+  reduce(rbind) %>%
   mutate(species = fct_reorder(species, desc(medianChange))) 
 saveRDS(hullChanges,file="outputs/mcphullChanges.rds")
 
 #annual
-hullChanges <- lapply(allspecies, function(x){
+hullAnnual <- lapply(allspecies, function(x){
   applyMCPHull(x,modelSummaries_Limits, summary="annual")
-})
-hullChanges  <- do.call(rbind,hullChanges)
-saveRDS(hullChanges,file="outputs/mcpahullAnnual.rds")
+})%>%
+  reduce(rbind)
+saveRDS(hullAnnual,file="outputs/mcpahullAnnual.rds")
 
 ### compare hulls ####
 
@@ -185,8 +189,8 @@ qplot(medianChange_1, medianChange_2, data=bothChanges)
 #lat extent
 rangeExtents <- lapply(allspecies, function(x){
   applyRangeExtent(x,modelSummaries_Limits)
-})
-rangeExtents  <- do.call(rbind,rangeExtents)
+})%>%
+  reduce(rbind)
 saveRDS(rangeExtents,file="outputs/rangeExtents.rds")
 
 #plot
@@ -239,7 +243,7 @@ ggsave("plots/eoccChange_vs_aoccChange.png")
 #Deming regression or orthogonal regression
 library(deming)
 
-#get error
+#get error (approximate for the most)
 allChanges$sd_extent <- (allChanges$upperChange_extent - allChanges$medianChange_extent)/2
 allChanges$sd_area <- (allChanges$upperChange_area - allChanges$medianChange_area)/2
 
@@ -305,9 +309,11 @@ p1_CE <- cowplot::plot_grid(g1,g2,nrow=1)
 
 myspecies <- "Sympetrum danae"
 
-#same as above
+#same code as above
 p1_SD <- cowplot::plot_grid(g1,g2,nrow=1)
 
+
+#combine both together
 cowplot::plot_grid(p1_CE,p1_SD,
                    nrow=2,
                    align="hv",
@@ -316,43 +322,6 @@ cowplot::plot_grid(p1_CE,p1_SD,
         hjust=c(-0.35,-0.5))
 
 ggsave("plots/example_ts.png")
-
-### ecoregion analysis ####
-
-#clean ecoregion
-modelSummaries_Limits$Naturraum <- gsub("Naturräume Deutschland/","",
-                                         modelSummaries_Limits$Coarsenaturraum)
-
-modelSummaries_Limits$Naturraum[modelSummaries_Limits$Naturraum=="Alpen"]<- "Alpen / vorland"
-modelSummaries_Limits$Naturraum[modelSummaries_Limits$Naturraum=="Alpenvorland"]<- "Alpen / vorland"
-table(modelSummaries_Limits$Naturraum)
-
-#get realizations
-PAs <- lapply(modelSummaries_Limits$mean, function(x) rbinom(100,1,x))
-PA_matrix <- do.call(rbind,PAs)
-
-#apply function
-ecoChange <- lapply(allspecies,function(x){
-  applyEcoregion(x, modelSummaries_Limits,summary="annual")})
-ecoChange <- do.call(rbind,ecoChange)
-ecoChange$change <- boot::logit(ecoChange$median2016+0.01)-boot::logit(ecoChange$median1990+0.001)
-save(ecoChange,file="outputs/ecoChange.rds")
-
-
-ecoChange %>%
-  ungroup() %>%
-  select(Species,change,Naturraum,median2016,median1990) %>%
-  pivot_longer(starts_with("median"),names_to="Year",values_to="value") %>%
-  mutate(Year = parse_number(Year)) %>%
-  ggplot(aes(x=Year,y=value,group=Species,colour=change))+
-    scale_colour_gradient2(low="green",high="purple")+
-    geom_point(alpha=0.2)+
-    geom_line(size=2,alpha=0.5)+
-    scale_x_continuous(breaks=c(1990,2016),labels=c(1990,2016))+
-    facet_wrap(~Naturraum)+
-    ylab("Occupancy proportion")
-
-ggsave("plots/ecoChange.png",height=5.5,width=7)
 
 
 ### nationwide-mean ####

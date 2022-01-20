@@ -15,6 +15,8 @@
 
 library(sf)
 library(tidyverse)
+library(ggthemes)
+library(cowplot)
 
 theme_set(theme_few())
 
@@ -55,11 +57,17 @@ mtbs <- st_read(dsn="C:/Users/db40fysa/Nextcloud/sMon/sMon-Analyses/MTB_Q Inform
 equalProj <- st_crs(mtbs)
 area <- st_area(mtbs)
 meanArea <- mean(area)
+totalArea <- as.numeric(sum(area))
 
 #get germany outline
 germanOutline <- raster::getData(name='GADM', country='DE',level=0)
 germanOutline <- st_as_sf(germanOutline)
 germanOutline <- st_transform(germanOutline,equalProj)
+
+#add on lon and lat
+modelSummaries$lon <- mtbsDF$lon[match(modelSummaries$MTB, mtbsDF$MTB)]
+modelSummaries$lat <- mtbsDF$lat[match(modelSummaries$MTB, mtbsDF$MTB)]
+modelSummaries <- subset(modelSummaries, !is.na(lon) & !is.na(lat))
 
 ### subset data #####
 
@@ -78,6 +86,11 @@ PA_matrix <- do.call(rbind,PAs)
 
 #area
 areaChanges <- lapply(allspecies, function(x){
+  applyRangeArea(x,modelSummaries_Limits, summary="annual")})
+areaChanges  <- do.call(rbind,areaChanges)
+saveRDS(areaChanges,file="outputs/areaCAnnual.rds")
+
+areaChanges <- lapply(allspecies, function(x){
   applyRangeArea(x,modelSummaries_Limits)})
 areaChanges  <- do.call(rbind,areaChanges)
 saveRDS(areaChanges,file="outputs/areaChanges.rds")
@@ -94,7 +107,13 @@ areaChanges %>%
 
 ggsave("plots/areaChange.png")
 
-### hull ####
+nrow(subset(areaChanges, medianChange>0))
+nrow(subset(areaChanges, medianChange<0))
+
+summary(subset(areaChanges, medianChange>0)$medianChange)
+summary(subset(areaChanges, medianChange<0)$medianChange)
+
+### concave hull ####
 
 #hull
 hullChanges <- lapply(allspecies, function(x){
@@ -116,6 +135,50 @@ hullChanges %>%
 
 ggsave("plots/hullChange.png")
 
+nrow(subset(hullChanges, medianChange>0))
+nrow(subset(hullChanges, medianChange<0))
+
+summary(subset(hullChanges, medianChange>0)$medianChange)
+summary(subset(hullChanges, medianChange<0)$medianChange)
+
+### alpha hull ####
+
+#not 10, 14, 19 etc...
+hullChanges <- lapply(allspecies[15:68], function(x){
+  applyAlphaHull(x,modelSummaries_Limits)
+  print(x)
+  })
+hullChanges  <- do.call(rbind,hullChanges) %>%
+  mutate(species = fct_reorder(species, desc(medianChange))) 
+
+### MCP hull ####
+#minimum convex hull
+
+#change
+hullChanges <- lapply(allspecies, function(x){
+  applyMCPHull(x,modelSummaries_Limits)
+})
+hullChanges  <- do.call(rbind,hullChanges) %>%
+  mutate(species = fct_reorder(species, desc(medianChange))) 
+saveRDS(hullChanges,file="outputs/mcphullChanges.rds")
+
+#annual
+hullChanges <- lapply(allspecies, function(x){
+  applyMCPHull(x,modelSummaries_Limits, summary="annual")
+})
+hullChanges  <- do.call(rbind,hullChanges)
+saveRDS(hullChanges,file="outputs/mcpahullAnnual.rds")
+
+### compare hulls ####
+
+hullChanges1 <- readRDS("outputs/concavehullChanges.rds")
+hullChanges2 <- readRDS("outputs/mcphullChanges.rds")
+
+bothChanges <- inner_join(hullChanges1,hullChanges2,
+                         by=c("species"),
+                         suffix = c("_1","_2"))
+qplot(medianChange_1, medianChange_2, data=bothChanges)
+#strongly correlated -2 is smaller!
 
 ### lat extent ####
 
@@ -146,6 +209,9 @@ ggsave("plots/latitudeChange.png")
 
 ### relationships ####
 
+areaChanges <- readRDS("outputs/areaChanges.rds")
+hullChanges <- readRDS("outputs/concavehullChanges.rds")
+
 allChanges <- inner_join(hullChanges,areaChanges,
                          by=c("species"),
                          suffix = c("_extent","_area"))
@@ -161,7 +227,7 @@ g1 <- ggplot(data = subset(allChanges, medianChange_extent<10),
   geom_hline(linetype="dashed",yintercept=0)+
   geom_vline(linetype="dashed",xintercept=0)+
   scale_color_viridis_d()+
-  xlab("Change in AOCC") + ylab("Change in EOCC")+
+  xlab("Change in AOO") + ylab("Change in EOO")+
   theme_few()
 g1
 
@@ -177,6 +243,7 @@ library(deming)
 allChanges$sd_extent <- (allChanges$upperChange_extent - allChanges$medianChange_extent)/2
 allChanges$sd_area <- (allChanges$upperChange_area - allChanges$medianChange_area)/2
 
+#fit models to each group
 model_winners <- deming(medianChange_extent ~ exp(medianChange_area), 
        xstd = sd_area, ystd = sd_extent, 
        data = subset(allChanges, medianChange_area > 0 & medianChange_extent < 10))
@@ -184,7 +251,6 @@ model_winners <- deming(medianChange_extent ~ exp(medianChange_area),
 model_losers <- deming(medianChange_extent ~ medianChange_area, 
                         xstd = sd_area, ystd = sd_extent, 
                         data = subset(allChanges, medianChange_area<0 & medianChange_extent<10))
-
 
 #https://stackoverflow.com/questions/68684079/restrict-range-of-geom-ablineslope-somenumber
 
@@ -206,7 +272,14 @@ g1 +
   }), color = viridis::viridis(2)[2])
 
 
-ggsave("plots/eoccChange_vs_aoccChange.png")
+ggsave("plots/eoccChange_vs_aoccChange.png", width = 7, height = 4)
+
+
+#test difference between slopes
+#model_winners
+#model_losers
+#?
+#deming allow only one predictor
 
 ### species ts ####
 
@@ -284,26 +357,34 @@ ggsave("plots/ecoChange.png",height=5.5,width=7)
 
 ### nationwide-mean ####
 
-#occupancy proportion
-modelSummaries_Limits %>%
+#occupancy area
+g1 <- modelSummaries_Limits %>%
   group_by(Species,Year) %>%
   summarise(prop = sum(mean)/length(mean))%>%
+  mutate(area = prop * totalArea/1000000000) %>%
   group_by(Species) %>%
-  mutate(change=boot::logit(prop[Year==2016]+0.01)-boot::logit(prop[Year==1990]+0.001))%>%
+  mutate(change=(area[Year==2016]-area[Year==1990]))%>%
   ungroup()%>%
-  ggplot(aes(x=Year,y=prop,group=Species,colour=change))+
+  ggplot(aes(x=Year,y=area,group=Species,colour=change))+
   scale_colour_gradient2(low="green",high="purple")+
   geom_point(alpha=0.2)+
   geom_line(size=2,alpha=0.5)+
   scale_x_continuous(breaks=c(1990,2016),labels=c(1990,2016))+
-  ylab("Occupancy proportion")
+  theme(legend.position = "top") +
+  ylab("Area of occupancy")
+g1
+ggsave("plots/nationareaChange.png")
 
-ggsave("plots/nationChange.png")
 
 #occupancy extent
-modelSummaries_Limits %>%
+
+
+
+#extent position
+g2 <- modelSummaries_Limits %>%
   group_by(Species,Year) %>%
   summarise(medianExtent = weighted.mean(y_MTB, mean)) %>%
+  mutate(medianExtent = medianExtent/1000) %>%
   group_by(Species) %>%
   mutate(change=medianExtent[Year==2016]-medianExtent[Year==1990]) %>%
   ungroup()%>%
@@ -312,10 +393,15 @@ modelSummaries_Limits %>%
   geom_point(alpha=0.2)+
   geom_line(size=2,alpha=0.5)+
   scale_x_continuous(breaks=c(1990,2016),labels=c(1990,2016))+
+  theme(legend.position = "top") +
   ylab("Extent position")
+g2
 
 ggsave("plots/nationextentChange.png")
 
-### state  analysis ####
+#plot together
+plot_grid(g1,g2,ncol=2)
+
+ggsave("plots/nationChange.png",width=7, height=4)
 
 ### end ####

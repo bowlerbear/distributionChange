@@ -16,5 +16,7 @@ Analysis of Odonata data from sMon to explore change.
 - 01 get models - these are from the sMon project
 - 02 extract simple statistics from the predicted distributions
 - 03 playing with fragmentation statistics
-- spline_function.R - functions for the analysis of the empirical data
+- 04 separate regions into core and marginal and look at change in each
+- 05 core_function - all the main functions 
+- 06 spatial_patterns - maps and stuff
 

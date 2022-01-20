@@ -61,32 +61,32 @@ coreChanges %>%
   scale_color_viridis_d()+
   coord_flip()+
   geom_hline(yintercept=0, linetype="dashed") +
-  ylab("Relative changes")+
-  theme(axis.text.y = element_text(size=rel(0.7)))
+  ylab("Relative change in AOO")+
+  theme(axis.text.y = element_text(size=rel(0.5)))
   
-
 ggsave("plots/coreChange.png")
 
 ### relationships ####
 
-hullChanges <- readRDS("outputs/hullChanges.rds")
+coreChanges <- readRDS("outputs/coreChanges.rds")
+areaChanges <- readRDS("outputs/areaChanges.rds")
 
 #comparison to core
 allChanges <- coreChanges %>%
               filter(Core=="core") %>%
               rename(species = Species) %>%
-              inner_join(.,hullChanges,
+              inner_join(.,areaChanges,
                          by=c("species"),
-                         suffix = c("_core","_extent"))
+                         suffix = c("_core","_total"))
 
-ggplot(data = subset(allChanges, medianChange_extent<5),
-       aes(x = medianChange_core, y = medianChange_extent)) + 
+ggplot(data = allChanges,
+       aes(x = medianChange_core, y = medianChange_total)) + 
   geom_point() + 
-  geom_errorbar(aes(ymin = lowerChange_extent,ymax = upperChange_extent)) + 
+  geom_errorbar(aes(ymin = lowerChange_total,ymax = upperChange_total)) + 
   geom_errorbarh(aes(xmin = lowerChange_core, xmax = upperChange_core))+
   geom_hline(linetype="dashed",yintercept=0)+
   geom_vline(linetype="dashed",xintercept=0)+
-  xlab("Change in core AOCC") + ylab("Change in EOCC")+
+  xlab("Change in core AOCC") + ylab("Change in total AOCC")+
   theme_few()
 
 ggsave("plots/coreChange_vs_aoccChange.png")
@@ -96,14 +96,14 @@ ggsave("plots/coreChange_vs_aoccChange.png")
 allChanges <- coreChanges %>%
   filter(Core=="marginal") %>%
   rename(species = Species) %>%
-  inner_join(.,hullChanges,
+  inner_join(.,arealChanges,
              by=c("species"),
-             suffix = c("_core","_extent"))
+             suffix = c("_core","_total"))
 
-ggplot(data = subset(allChanges, medianChange_extent<5),
-       aes(x = medianChange_core, y = medianChange_extent)) + 
+ggplot(data = allChanges,
+       aes(x = medianChange_core, y = medianChange_total)) + 
   geom_point() + 
-  geom_errorbar(aes(ymin = lowerChange_extent,ymax = upperChange_extent)) + 
+  geom_errorbar(aes(ymin = lowerChange_total,ymax = upperChange_total)) + 
   geom_errorbarh(aes(xmin = lowerChange_core, xmax = upperChange_core))+
   geom_hline(linetype="dashed",yintercept=0)+
   geom_vline(linetype="dashed",xintercept=0)+
@@ -112,6 +112,54 @@ ggplot(data = subset(allChanges, medianChange_extent<5),
 
 ggsave("plots/marginalChange_vs_aoccChange.png")
 
+
+#plot core change against marginal change??
+
+coreChanges_wide <- coreChanges %>%
+                    dplyr::select(Species, Core, medianChange) %>%
+                    group_by(Species) %>%
+                    pivot_wider(names_from="Core", 
+                                values_from = "medianChange")
+
+
+qplot(core, marginal, data=coreChanges_wide) +
+  geom_hline(yintercept=0) +
+  geom_vline(xintercept=0)
+
+#????
+
+nrow(coreChanges_wide)
+
+nrow(subset(coreChanges_wide, absent>0 & core >0 & marginal>0))
+
+nrow(subset(coreChanges_wide, absent<0 & core <0 & marginal<0))
+
+sd(coreChanges_wide$core)
+sd(coreChanges_wide$marginal)
+sd(coreChanges_wide$absent)
+
+#also merge with area changes
+coreChanges_full <- coreChanges %>%
+                      rename(species = Species) %>%
+                      inner_join(.,areaChanges,
+                      by=c("species"),
+                      suffix = c("_core","_total")) %>%
+                      mutate(Core = fct_relevel(Core, "core", "marginal", "absent"))
+
+ggplot(data = coreChanges_full,
+       aes(y = medianChange_core, x = medianChange_total, colour=Core)) + 
+  geom_point() + 
+  geom_errorbarh(aes(xmin = lowerChange_total,xmax = upperChange_total, colour=Core)) + 
+  geom_errorbar(aes(ymin = lowerChange_core, ymax = upperChange_core, colour=Core))+
+  geom_hline(linetype="dashed",yintercept=0)+
+  geom_vline(linetype="dashed",xintercept=0)+
+  geom_smooth(method="gam", aes(colour=Core), se=FALSE)+
+  scale_color_viridis_d()+
+  ylab("Change in regional AOO") + xlab("Change in total AOO")+
+  theme_few()+
+  theme(legend.position = "top")
+
+ggsave("plots/marginalChange_vs_coreChange.png", width = 4, height = 4)
 
 ### appendix ####
 #other possibilities

@@ -82,7 +82,7 @@ getAlphaHull <- function(species, modelSummaries_Limits){
       
       dist <- max(ydat$y_MTB)-min(ydat$y_MTB)
       ah <- alphahull::ahull(ydat, alpha = dist)
-      plot(ah, main = species)
+      #plot(ah, main = species)
       alphahull::areaahull(ah)
       
     }else {
@@ -93,6 +93,38 @@ getAlphaHull <- function(species, modelSummaries_Limits){
   
 }
 
+
+getMCP <- function(species, modelSummaries_Limits){
+  
+  require(adehabitatHR)
+  require(sp)
+  
+  speciesData <- subset(modelSummaries_Limits,Species==species)
+  
+  #put hull around data for each year
+  #dat <- subset(speciesData, mean>0.1)[,c("x_MTB","y_MTB","Year","MTB")]
+  dat <- subset(speciesData, PA == 1)[,c("x_MTB","y_MTB","Year","MTB")]
+  
+  allYears <- sort(unique(speciesData$Year))
+  
+  rangeHull <- sapply(allYears,function(x){
+    
+    ydat <- dat[dat$Year==x,c("x_MTB","y_MTB")]
+    
+    if(nrow(ydat)>0 & length(unique(ydat$x_MTB))>4){
+      
+      mycoords <- ydat[,c("x_MTB","y_MTB")]
+      coordinates(mycoords) <- c("x_MTB","y_MTB")
+      proj4string(mycoords) <- CRS("+proj=utm +zone=32 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs")
+      ch <- mcp(mycoords, percent=99)
+      rangeSize <- ch@data$area
+      return(rangeSize)
+    }else {
+      return(0)
+    }})
+  
+  data.frame(Species = species, Year = allYears, rangeHull = rangeHull) 
+}
 
 getConcaveMan <- function(species, modelSummaries_Limits){
 
@@ -254,6 +286,79 @@ applyConcaveMan <- function(species, modelSummaries_Limits, summary = "change"){
 }
 
 
+applyAlphaHull <- function(species, modelSummaries_Limits, summary = "change"){
+  
+  #apply to each realization
+  temp <- lapply(1:ncol(PA_matrix),function(i){
+    
+    modelSummaries_Limits$PA <- PA_matrix[,i] 
+    out <- getAlphaHull(species, modelSummaries_Limits)
+    out$sim <- i
+    return(out)
+  })
+  temp <- do.call(rbind,temp)
+  
+  #summarise change
+  if(summary == "change"){
+    temp %>%
+      tidyr::pivot_wider(everything(),names_from = Year, values_from = rangeAlpha) %>%
+      janitor::clean_names() %>%  
+      dplyr::mutate(change = log((x2016+10)/(x1990+10)))  %>%
+      dplyr::group_by(species) %>%
+      dplyr::summarise(medianChange = median(change), 
+                       lowerChange = quantile(change, 0.25),
+                       upperChange = quantile(change, 0.75))
+    
+  }else if(summary == "annual"){
+    
+    #summarise annual
+    temp %>%
+      dplyr::group_by(Species,Year) %>%
+      dplyr::summarise(medianArea = median(rangeAlpha), 
+                       lowerArea = quantile(rangeAlpha, 0.25),
+                       upperArea = quantile(rangeAlpha, 0.75))
+    
+  }
+  
+}
+
+
+applyMCPHull <- function(species, modelSummaries_Limits, summary = "change"){
+  
+  #apply to each realization
+  temp <- lapply(1:ncol(PA_matrix),function(i){
+    
+    modelSummaries_Limits$PA <- PA_matrix[,i] 
+    out <- getMCP(species, modelSummaries_Limits)
+    out$sim <- i
+    return(out)
+  })
+  temp <- do.call(rbind,temp)
+  
+  #summarise change
+  if(summary == "change"){
+    temp %>%
+      tidyr::pivot_wider(everything(),names_from = Year, values_from = rangeHull) %>%
+      janitor::clean_names() %>%  
+      dplyr::mutate(change = log((x2016+10)/(x1990+10)))  %>%
+      dplyr::group_by(species) %>%
+      dplyr::summarise(medianChange = median(change), 
+                       lowerChange = quantile(change, 0.25),
+                       upperChange = quantile(change, 0.75))
+    
+  }else if(summary == "annual"){
+    
+    #summarise annual
+    temp %>%
+      dplyr::group_by(Species,Year) %>%
+      dplyr::summarise(medianArea = median(rangeHull), 
+                       lowerArea = quantile(rangeHull, 0.25),
+                       upperArea = quantile(rangeHull, 0.75))
+    
+  }
+  
+}
+
 ### ecoregion analysis ####
 
 applyEcoregion <- function(species, modelSummaries_Limits, summary = "change"){
@@ -362,7 +467,7 @@ applyFragStats <- function(species, modelSummaries_Limits, summary = "change"){
   #summarise change
   if(summary == "change"){
     temp %>%
-      dplyr::filter(class == 1 & metric == "clumpy") %>%
+      dplyr::filter(class == 1 & metric == "clumpy" & !is.na(value)) %>%
       dplyr::select(Species,Year,value,simNu) %>%
       tidyr::pivot_wider(everything(),names_from = Year, values_from = value) %>%
       janitor::clean_names() %>%  
@@ -377,9 +482,55 @@ applyFragStats <- function(species, modelSummaries_Limits, summary = "change"){
     #summarise annual
     temp %>%
       dplyr::group_by(Species,Year,class, metric,name,type,function_name) %>%
-      dplyr::summarise(medianMetric = median(value), 
-                       lowerMetric = quantile(value, 0.25),
-                       upperMetric = quantile(value, 0.75))
+      dplyr::summarise(medianMetric = median(value,na.rm=T), 
+                       lowerMetric = quantile(value, 0.25, na.rm=T),
+                       upperMetric = quantile(value, 0.75, na.rm=T))
+    
+  }
+  
+}
+
+
+
+applySaturation <- function(species, modelSummaries_Limits, summary = "change"){
+  
+  #apply to each realization
+  temp <- lapply(1:ncol(PA_matrix),function(i){
+    
+    modelSummaries_Limits$PA <- PA_matrix[,i] 
+    
+    #get hull
+    out <- getMCP(species, modelSummaries_Limits)
+    
+    #add on number of occupied grids
+    out2 <- getRangeArea(species, modelSummaries_Limits)
+    out$nuGrids <- out2$nuGrids
+    out$saturation <- out$nuGrids/out$rangeHull
+    out$saturation[is.infinite(out$saturation)] <- 0
+    out$sim <- i
+    return(out[,c("Species","Year","saturation","sim")])
+  })
+  temp <- do.call(rbind,temp)
+  
+  #summarise change
+  if(summary == "change"){
+    temp %>%
+      tidyr::pivot_wider(everything(),names_from = Year, values_from = saturation) %>%
+      janitor::clean_names() %>%  
+      dplyr::mutate(change = log((x2016+10)/(x1990+10)))  %>%
+      dplyr::group_by(species) %>%
+      dplyr::summarise(medianChange = median(change), 
+                       lowerChange = quantile(change, 0.25),
+                       upperChange = quantile(change, 0.75))
+    
+  }else if(summary == "annual"){
+    
+    #summarise annual
+    temp %>%
+      dplyr::group_by(Species,Year) %>%
+      dplyr::summarise(medianArea = median(saturation), 
+                       lowerArea = quantile(saturation, 0.25),
+                       upperArea = quantile(saturation, 0.75))
     
   }
   

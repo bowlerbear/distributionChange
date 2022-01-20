@@ -1,5 +1,3 @@
-#run the modelSummaries_stan
-
 #http://datazone.birdlife.org/species/spcredcrit
 
 #Severely fragmented - Severely fragmented refers to the situation where increased extinction risks to the #species result from the fact that most individuals within a species are found in small and relatively #isolated subpopulations. These small subpopulations may go extinct, with a reduced probability of #recolonisation.
@@ -26,37 +24,35 @@ allYears <- sort(unique(modelSummaries_Limits$Year))
 
 utmProj <- "+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
 
-### apply ####
-
 #get realizations
 PAs <- lapply(modelSummaries_Limits$mean, function(x) rbinom(50,1,x))
 PA_matrix <- do.call(rbind,PAs)
 
+### fragmentation ####
+
 #change
-fragDF <- lapply(allspecies[-c(1,64)],function(x){
-  applyFragStats(x, modelSummaries_Limits)
-}) %>% do.call(rbind,fragDF) %>%
+fragChange <- lapply(allspecies[-c(1,64)],function(x){
+  applyFragStats(x, modelSummaries_Limits)}) %>% 
+  reduce(rbind) %>%
   filter(class == 1) %>%
   filter(name == "clumpiness index") 
 
-saveRDS(fragDF, file="outputs/clumpiChange.rds")
+saveRDS(fragChange, file="outputs/clumpiChange.rds")
 
 #annual
-fragDF <- lapply(allspecies[-c(1,64)],function(x){
-  applyFragStats(x, modelSummaries_Limits, summary = "annual")
-})
-
-fragChanges <- do.call(rbind,fragDF) %>%
+fragAnnual <- lapply(allspecies[-c(1,64)],function(x){
+  applyFragStats(x, modelSummaries_Limits, summary = "annual")}) %>% 
+  reduce (rbind) %>%
   filter(class == 1) %>%
   filter(name == "clumpiness index") %>%
   group_by(Species) %>%
   filter(Species!="Gomphus flavipes") %>%
   mutate(change = (log(medianMetric[Year==2016])- log((medianMetric[Year==1990]))))
 
-saveRDS(fragChanges, file="outputs/clumpiAnnual.rds")
+saveRDS(fragAnnual, file="outputs/clumpiAnnual.rds")
 
 #plotting
-fragChanges %>%
+fragAnnual %>%
   filter(medianMetric > (-1)) %>%
   ggplot(aes(x=Year,y=medianMetric,group=Species,colour=change))+
   scale_colour_gradient2(low="green",high="purple")+ 
@@ -78,7 +74,7 @@ saturationDF <- lapply(allspecies[-c(1,64)],function(x){
 
 saveRDS(saturationDF, file="outputs/satuationChange.rds")
 
-### rel with AOCC
+### relationship with AOCC ####
 
 areaChanges <- readRDS("outputs/areaChanges.rds")
 
@@ -122,7 +118,6 @@ g2
 plot_grid(g1,g2,ncol=2)
 
 ggsave("plots/clumpiness_vs_saturation.png",width=8, height=3)
-
 
 ### Appendix: metric play ####
 

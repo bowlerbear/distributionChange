@@ -1,3 +1,5 @@
+### simple functions ####
+
 getRangeArea <- function(species, modelSummaries_Limits){
   
   speciesData <- subset(modelSummaries_Limits,Species==species)
@@ -247,7 +249,7 @@ applyRangeExtent <- function(species, modelSummaries_Limits, summary="change"){
   
 }
 
-### extent of occupancy (EOCC) ####
+### extent (EOCC) ####
 
 applyConcaveMan <- function(species, modelSummaries_Limits, summary = "change"){
   
@@ -359,55 +361,8 @@ applyMCPHull <- function(species, modelSummaries_Limits, summary = "change"){
   
 }
 
-### ecoregion analysis ####
 
-applyEcoregion <- function(species, modelSummaries_Limits, summary = "change"){
-  
-  #apply to each realization
-  temp <- lapply(1:ncol(PA_matrix),function(i){
-    
-    modelSummaries_Limits$PA <- PA_matrix[,i]
-    
-    modelSummaries_Limits %>%
-      filter(Species==species) %>%
-      dplyr::group_by(Naturraum,Year) %>%
-      dplyr::summarise(nu=sum(PA),total=length(PA)) %>%
-      add_column(Species=species, simNu=i)
-    
-  })
-  
-  temp <- do.call(rbind,temp)
-  
-  
-  #summarise
-  if(summary=="change"){
-  temp %>%
-    dplyr::group_by(Naturraum,Species,simNu) %>%
-    dplyr::summarize(change = (nu[Year==2016]-nu[Year==1990]+1)/(total[Year==1990])) %>%
-    dplyr::group_by(Species,Naturraum) %>%
-    dplyr::summarise(medianChange = quantile(change,0.5),
-                     lowerChange = quantile(change,0.025),
-                     upperChange = quantile(change,0.975))
-  
-
-  }else if(summary=="annual"){
-    temp %>%
-      dplyr::group_by(Species,Naturraum,simNu) %>%
-      dplyr::summarize(prop1990 = nu[Year==1990]/total[Year==1990],
-                       prop2016 = nu[Year==2016]/total[Year==2016]) %>%
-      dplyr::group_by(Species,Naturraum) %>%
-      dplyr::summarise(median1990 = quantile(prop1990,0.5),
-                       lower1990 = quantile(prop1990,0.025),
-                       upper1990 = quantile(prop1990,0.975),
-                       median2016 = quantile(prop2016,0.5),
-                       lower2016 = quantile(prop2016,0.025),
-                       upper2016 = quantile(prop2016,0.975))
-    
-  }
-  
-}
-
-### frag stats ####
+### clumpiness ####
 
 getFragStats <- function(species, modelSummaries_Limits){
   
@@ -657,3 +612,53 @@ if(summary=="annual"){
 }
 
 }
+
+
+### ecoregion analysis ####
+
+applyEcoregion <- function(species, modelSummaries_Limits, summary = "change"){
+  
+  #apply to each realization
+  temp <- lapply(1:ncol(PA_matrix),function(i){
+    
+    modelSummaries_Limits$PA <- PA_matrix[,i]
+    
+    modelSummaries_Limits %>%
+      filter(Species==species) %>%
+      dplyr::group_by(Naturraum,Year) %>%
+      dplyr::summarise(nu=sum(PA),total=length(PA)) %>%
+      add_column(Species=species, simNu=i)
+    
+  })
+  
+  temp <- do.call(rbind,temp)
+  
+  
+  #summarise
+  if(summary=="change"){
+    temp %>%
+      dplyr::group_by(Naturraum,Species,simNu) %>%
+      dplyr::summarize(change = (nu[Year==2016]-nu[Year==1990]+1)/(total[Year==1990])) %>%
+      dplyr::group_by(Species,Naturraum) %>%
+      dplyr::summarise(medianChange = quantile(change,0.5),
+                       lowerChange = quantile(change,0.025),
+                       upperChange = quantile(change,0.975))
+    
+    
+  }else if(summary=="annual"){
+    temp %>%
+      dplyr::group_by(Species,Naturraum,simNu) %>%
+      dplyr::summarize(prop1990 = nu[Year==1990]/total[Year==1990],
+                       prop2016 = nu[Year==2016]/total[Year==2016]) %>%
+      dplyr::group_by(Species,Naturraum) %>%
+      dplyr::summarise(median1990 = quantile(prop1990,0.5),
+                       lower1990 = quantile(prop1990,0.025),
+                       upper1990 = quantile(prop1990,0.975),
+                       median2016 = quantile(prop2016,0.5),
+                       lower2016 = quantile(prop2016,0.025),
+                       upper2016 = quantile(prop2016,0.975))
+    
+  }
+  
+}
+

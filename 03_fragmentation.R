@@ -12,17 +12,8 @@ library(raster)
 
 ### get data ####
 
-#run script 01
-
-### subset data #####
-
-### lists ####
-
-allspecies <- sort(unique(modelSummaries_Limits$Species))
-
-allYears <- sort(unique(modelSummaries_Limits$Year))
-
-utmProj <- "+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+source("01_getModels.R")
+source("05_core_functions.R")
 
 #get realizations
 PAs <- lapply(modelSummaries_Limits$mean, function(x) rbinom(50,1,x))

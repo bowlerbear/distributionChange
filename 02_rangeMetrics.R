@@ -20,64 +20,10 @@ library(cowplot)
 
 theme_set(theme_few())
 
-source("05_core_functions.R")
-
 ### get data ####
 
-#run script 01
 source("01_getModels.R")
-
-### subset ####
-
-#remove rare species
-speciesSummary <- modelSummaries %>%
-                    dplyr::group_by(Species) %>%
-                    dplyr::summarise(medOccu = median(mean)) %>%
-                    arrange(medOccu) %>%
-                    filter(medOccu>0)
-
-#we lose 6 species
-modelSummaries <- subset(modelSummaries, Species %in% speciesSummary$Species)
-
-sort(unique(modelSummaries$Species))
-
-#remove S. flaveolum - migratory and fluctuates alot!
-modelSummaries <- subset(modelSummaries, Species!="Sympetrum flaveolum")
-
-#weird maps at the moment - check later
-modelSummaries <- subset(modelSummaries, !Species %in% c("Anax ephippiger",
-                                                    "Boyeria irene"))
-
-#all those occupancies than 5% should be absent
-modelSummaries$mean <- ifelse(modelSummaries$mean<0.05,0,modelSummaries$mean)
-
-### GIS data ####
-
-mtbs <- st_read(dsn="C:/Users/db40fysa/Nextcloud/sMon/sMon-Analyses/MTB_Q Informations/MTBQ_shapefile",layer="MTB_25832")
-#Projected CRS: ETRS89 / UTM zone 32N
-equalProj <- st_crs(mtbs)
-area <- st_area(mtbs)
-meanArea <- mean(area)
-totalArea <- as.numeric(sum(area))
-
-#get germany outline
-germanOutline <- raster::getData(name='GADM', country='DE',level=0) %>%
-  st_as_sf(germanOutline) %>%
-  st_transform(germanOutline,equalProj)
-
-#add on lon and lat
-modelSummaries$lon <- mtbsDF$lon[match(modelSummaries$MTB, mtbsDF$MTB)]
-modelSummaries$lat <- mtbsDF$lat[match(modelSummaries$MTB, mtbsDF$MTB)]
-modelSummaries <- subset(modelSummaries, !is.na(lon) & !is.na(lat))
-
-### subset data #####
-
-#subset to first and last year
-modelSummaries_Limits <- subset(modelSummaries, Year %in% c(1990,2016))
-
-allspecies <- sort(unique(modelSummaries$Species))
-
-allYears <- sort(unique(modelSummaries$Year))
+source("05_core_functions.R")
 
 ### area ####
 

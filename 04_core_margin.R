@@ -1,46 +1,23 @@
 #script to pull out core and marginal areas
 library(raster)
+theme_set(theme_few())
 
 ### get data ####
 
-#run script 01
-
+source("01_getModels.R")
 source("05_core_functions.R")
-theme_set(theme_few())
-
-### subset data #####
-
-#add on lon and lat
-modelSummaries$lon <- mtbsDF$lon[match(modelSummaries$MTB, mtbsDF$MTB)]
-modelSummaries$lat <- mtbsDF$lat[match(modelSummaries$MTB, mtbsDF$MTB)]
-modelSummaries <- subset(modelSummaries, !is.na(lon) & !is.na(lat))
-
-#sort species name
-modelSummaries$Species <- as.character(sapply(modelSummaries$Species, function(x) strsplit(x,"_")[[1]][1]))
-
-#just take first and last year
-modelSummaries_Limits <- subset(modelSummaries, Year %in% c(1990,2016))
-
-### lists ####
-
-allspecies <- sort(unique(modelSummaries_Limits$Species))
-
-allyears <- sort(unique(modelSummaries_Limits$Year))
-
-utmProj <- "+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
-
-### apply function #####
-
-#define MTBs as core or marginal
-coreDF <- allspecies %>%
-        map(.,getCoreRegions) %>%
-        reduce(rbind)
 
 #get realizations of occupancy
 PAs <- lapply(modelSummaries_Limits$mean, function(x) rbinom(100,1,x))
 PA_matrix <- do.call(rbind,PAs)
 
-#apply function
+### define core or marginal ####
+
+coreDF <- allspecies %>%
+        map(.,getCoreRegions) %>%
+        reduce(rbind)
+
+#apply function to get changes
 coreChanges <- allspecies %>%
                 map(~getCoreCalc(., summary="change")) %>%
                 reduce(rbind)
@@ -91,7 +68,6 @@ ggplot(data = allChanges,
 
 ggsave("plots/coreChange_vs_aoccChange.png")
 
-
 #comparison to marginal
 allChanges <- coreChanges %>%
   filter(Core=="marginal") %>%
@@ -112,21 +88,7 @@ ggplot(data = allChanges,
 
 ggsave("plots/marginalChange_vs_aoccChange.png")
 
-
-#plot core change against marginal change??
-
-coreChanges_wide <- coreChanges %>%
-                    dplyr::select(Species, Core, medianChange) %>%
-                    group_by(Species) %>%
-                    pivot_wider(names_from="Core", 
-                                values_from = "medianChange")
-
-
-qplot(core, marginal, data=coreChanges_wide) +
-  geom_hline(yintercept=0) +
-  geom_vline(xintercept=0)
-
-#????
+### summary statistics ####
 
 nrow(coreChanges_wide)
 
@@ -137,6 +99,8 @@ nrow(subset(coreChanges_wide, absent<0 & core <0 & marginal<0))
 sd(coreChanges_wide$core)
 sd(coreChanges_wide$marginal)
 sd(coreChanges_wide$absent)
+
+### more plots #####
 
 #also merge with area changes
 coreChanges_full <- coreChanges %>%

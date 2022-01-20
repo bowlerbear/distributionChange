@@ -64,8 +64,6 @@ ggplot(annualTS)+
 
 ### processing ####
 
-### subset ####
-
 #remove rare species
 speciesSummary <- modelSummaries %>%
   dplyr::group_by(Species) %>%
@@ -115,5 +113,7 @@ modelSummaries_Limits <- subset(modelSummaries, Year %in% c(1990,2016))
 allspecies <- sort(unique(modelSummaries$Species))
 
 allYears <- sort(unique(modelSummaries$Year))
+
+utmProj <- "+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
 
 

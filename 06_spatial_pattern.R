@@ -1,4 +1,4 @@
-#map of spatial change
+#maps of spatial change
 
 library(sf)
 library(tmap)
@@ -37,7 +37,7 @@ sr
 
 tmap_save(sr, "plots/maps_speciesrichness.png",height=6,width=10)
 
-### rare vs common species ####
+### increase vs decrease species ####
 
 speciesrichnessChange <- modelSummaries_Limits %>% 
   dplyr::select(mean, Species, MTB, Year) %>%
@@ -74,10 +74,7 @@ sr_C
 
 tmap_save(sr_C, "plots/maps_speciesrichnessChange.png",height=6,width=10)
 
-### community turnover ####
-
-
-### plot example species ###
+### plot example species ####
 
 exampleData <- modelSummaries_Limits %>% 
                 filter(Species %in% c("Anax imperator",
@@ -93,3 +90,41 @@ g1 <- ggplot(exampleData) +
   scale_colour_viridis_c(direction = -1)
 
 ggsave(g1,"plots/maps_examplespecies.png",height=6,width=10)
+
+
+### ecoregion analysis ####
+
+#clean ecoregion
+modelSummaries_Limits$Naturraum <- gsub("Naturräume Deutschland/","",
+                                        modelSummaries_Limits$Coarsenaturraum)
+
+modelSummaries_Limits$Naturraum[modelSummaries_Limits$Naturraum=="Alpen"]<- "Alpen / vorland"
+modelSummaries_Limits$Naturraum[modelSummaries_Limits$Naturraum=="Alpenvorland"]<- "Alpen / vorland"
+table(modelSummaries_Limits$Naturraum)
+
+#get realizations
+PAs <- lapply(modelSummaries_Limits$mean, function(x) rbinom(100,1,x))
+PA_matrix <- do.call(rbind,PAs)
+
+#apply function
+ecoChange <- lapply(allspecies,function(x){
+  applyEcoregion(x, modelSummaries_Limits,summary="annual")})%>%
+  reduce(rbind)
+ecoChange$change <- boot::logit(ecoChange$median2016+0.01)-boot::logit(ecoChange$median1990+0.001)
+save(ecoChange,file="outputs/ecoChange.rds")
+
+
+ecoChange %>%
+  ungroup() %>%
+  select(Species,change,Naturraum,median2016,median1990) %>%
+  pivot_longer(starts_with("median"),names_to="Year",values_to="value") %>%
+  mutate(Year = parse_number(Year)) %>%
+  ggplot(aes(x=Year,y=value,group=Species,colour=change))+
+  scale_colour_gradient2(low="green",high="purple")+
+  geom_point(alpha=0.2)+
+  geom_line(size=2,alpha=0.5)+
+  scale_x_continuous(breaks=c(1990,2016),labels=c(1990,2016))+
+  facet_wrap(~Naturraum)+
+  ylab("Occupancy proportion")
+
+ggsave("plots/ecoChange.png",height=5.5,width=7)

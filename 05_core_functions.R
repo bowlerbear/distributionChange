@@ -208,7 +208,7 @@ getMCP <- function(species, modelSummaries_Limits){
       mycoords <- ydat[,c("x_MTB","y_MTB")]
       coordinates(mycoords) <- c("x_MTB","y_MTB")
       proj4string(mycoords) <- CRS("+proj=utm +zone=32 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs")
-      ch <- mcp(mycoords, percent=99)
+      ch <- mcp(mycoords, percent=99, unout="m2")
       rangeSize <- ch@data$area
       return(rangeSize)
     }else {

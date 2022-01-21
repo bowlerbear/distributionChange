@@ -363,6 +363,91 @@ applyMCPHull <- function(species, modelSummaries_Limits, summary = "change"){
 
 ### clumpiness ####
 
+#calculate the local occupancy change and get the clumpiness of the change
+
+getFragChange <- function(species, modelSummaries_Limits){
+  
+  #data for 1990
+  speciesSummary <- modelSummaries_Limits %>%
+    filter(Species==species) %>%
+    filter(Year == 1990)
+  
+  speciesRaster <- SpatialPixelsDataFrame(points = as.matrix(speciesSummary[,c("lon","lat")]),
+                                          data = data.frame(PA=speciesSummary$PA),
+                                          tolerance = 0.6,
+                                          proj4string = crs("+proj=longlat +datum=WGS84"))
+  
+  #make into a raster
+  r1 <- raster(speciesRaster)
+  
+  #data for 2016
+  speciesSummary <- modelSummaries_Limits %>%
+    filter(Species==species) %>%
+    filter(Year == 2016)
+  
+  speciesRaster <- SpatialPixelsDataFrame(points = as.matrix(speciesSummary[,c("lon","lat")]),
+                                          data = data.frame(PA=speciesSummary$PA),
+                                          tolerance = 0.6,
+                                          proj4string = crs("+proj=longlat +datum=WGS84"))
+  
+  #make into a raster
+  r2 <- raster(speciesRaster)
+  
+  
+  #make stack  
+  speciesStack <- stack(list(r1,r2))
+  speciesStack <- projectRaster(speciesStack, crs=utmProj, method="ngb")
+  speciesChange <- calc(speciesStack, function(x) x[2]-x[1])
+  
+  #calc change metrics
+  changes <- calculate_lsm(speciesChange, 
+                what = c("lsm_c_pland",
+                         "lsm_c_clumpy"),
+                full_name = TRUE) %>%
+    mutate(class = ifelse(class==0, "no change",
+                          ifelse(class==1, "increase", "decrease"))) %>%
+    add_column(Species = species)
+  
+  #also absolute change
+  speciesAbsChange <- calc(speciesChange, function(x) ifelse(x==0,0,1))
+  
+  calculate_lsm(speciesAbsChange, 
+                           what = c("lsm_c_pland",
+                                    "lsm_c_clumpy"),
+                           full_name = TRUE) %>%
+    filter(class == 1) %>%
+    mutate(class = "change") %>%
+    add_column(Species = species) %>%
+    bind_rows(.,changes)
+  
+}
+
+
+applyFragChange <- function(species, modelSummaries_Limits){
+  
+  #apply to each realization
+  temp <- lapply(1:ncol(PA_matrix),function(i){
+    
+    modelSummaries_Limits$PA <- PA_matrix[,i] 
+    out <- getFragChange(species, modelSummaries_Limits)
+    out$simNu <- i
+    return(out)
+  })
+  temp <- do.call(rbind,temp)
+  
+  #summarise across sims
+  temp %>%
+      dplyr::filter(metric == "clumpy" & !is.na(value)) %>%
+      dplyr::select(Species,class,value,simNu) %>%
+      dplyr::group_by(Species,class) %>%
+      dplyr::summarise(medianChange = median(value), 
+                       lowerChange = quantile(value, 0.25),
+                       upperChange = quantile(value, 0.75))
+    
+}
+
+
+#get the clumpiness of the annual distributions, and then the change in the clumpiness
 getFragStats <- function(species, modelSummaries_Limits){
   
   #data for 1990
@@ -439,52 +524,6 @@ applyFragStats <- function(species, modelSummaries_Limits, summary = "change"){
       dplyr::summarise(medianMetric = median(value,na.rm=T), 
                        lowerMetric = quantile(value, 0.25, na.rm=T),
                        upperMetric = quantile(value, 0.75, na.rm=T))
-    
-  }
-  
-}
-
-
-
-applySaturation <- function(species, modelSummaries_Limits, summary = "change"){
-  
-  #apply to each realization
-  temp <- lapply(1:ncol(PA_matrix),function(i){
-    
-    modelSummaries_Limits$PA <- PA_matrix[,i] 
-    
-    #get hull
-    out <- getMCP(species, modelSummaries_Limits)
-    
-    #add on number of occupied grids
-    out2 <- getRangeArea(species, modelSummaries_Limits)
-    out$nuGrids <- out2$nuGrids
-    out$saturation <- out$nuGrids/out$rangeHull
-    out$saturation[is.infinite(out$saturation)] <- 0
-    out$sim <- i
-    return(out[,c("Species","Year","saturation","sim")])
-  })
-  temp <- do.call(rbind,temp)
-  
-  #summarise change
-  if(summary == "change"){
-    temp %>%
-      tidyr::pivot_wider(everything(),names_from = Year, values_from = saturation) %>%
-      janitor::clean_names() %>%  
-      dplyr::mutate(change = log((x2016+10)/(x1990+10)))  %>%
-      dplyr::group_by(species) %>%
-      dplyr::summarise(medianChange = median(change), 
-                       lowerChange = quantile(change, 0.25),
-                       upperChange = quantile(change, 0.75))
-    
-  }else if(summary == "annual"){
-    
-    #summarise annual
-    temp %>%
-      dplyr::group_by(Species,Year) %>%
-      dplyr::summarise(medianArea = median(saturation), 
-                       lowerArea = quantile(saturation, 0.25),
-                       upperArea = quantile(saturation, 0.75))
     
   }
   
@@ -571,7 +610,7 @@ getCoreCalc <- function(myspecies, summary="annual"){
                                                           coreDF_species$MTB)]
   
   #for each realization do the following
-temp <- lapply(1:dim(PA_matrix)[2], function(i){
+  temp <- lapply(1:dim(PA_matrix)[2], function(i){
     modelSummaries_Limits %>%
       add_column(PA = PA_matrix[,i]) %>%
       filter(!is.na(Core)) %>%
@@ -581,19 +620,19 @@ temp <- lapply(1:dim(PA_matrix)[2], function(i){
       mutate(prop = occ/total) %>%
       add_column(simNu = i)
   }) %>% bind_rows() %>% ungroup() 
-
-
-if(summary=="annual"){
   
+  
+  if(summary=="annual"){
+    
     temp %>%
       dplyr::group_by(Core,Year) %>%
       dplyr::summarize(medianProp = quantile(prop,0.5), 
-              lowerProp = quantile(prop,0.025),
-              upperProp = quantile(prop,0.975)) %>%
+                       lowerProp = quantile(prop,0.025),
+                       upperProp = quantile(prop,0.975)) %>%
       add_column(Species = myspecies)
-  
-}else if(summary=="change"){
-  
+    
+  }else if(summary=="change"){
+    
     temp %>% 
       dplyr::select(Core, Year, prop, simNu) %>%
       dplyr::group_by(Core,Year, simNu) %>%
@@ -604,13 +643,62 @@ if(summary=="annual"){
       dplyr::mutate(change = ifelse(is.na(change),0, change)) %>%
       dplyr::group_by(Core) %>%
       dplyr::summarize(medianChange = quantile(change,0.5), 
-              lowerChange = quantile(change,0.025),
-              upperChange = quantile(change,0.975)) %>%
+                       lowerChange = quantile(change,0.025),
+                       upperChange = quantile(change,0.975)) %>%
       add_column(Species = myspecies)
     
+  }
+  
 }
 
+
+
+### spatial variability ####
+
+applySaturation <- function(species, modelSummaries_Limits, summary = "change"){
+  
+  #apply to each realization
+  temp <- lapply(1:ncol(PA_matrix),function(i){
+    
+    modelSummaries_Limits$PA <- PA_matrix[,i] 
+    
+    #get hull
+    out <- getMCP(species, modelSummaries_Limits)
+    
+    #add on number of occupied grids
+    out2 <- getRangeArea(species, modelSummaries_Limits)
+    out$nuGrids <- out2$nuGrids
+    out$saturation <- out$nuGrids/out$rangeHull
+    out$saturation[is.infinite(out$saturation)] <- 0
+    out$sim <- i
+    return(out[,c("Species","Year","saturation","sim")])
+  })
+  temp <- do.call(rbind,temp)
+  
+  #summarise change
+  if(summary == "change"){
+    temp %>%
+      tidyr::pivot_wider(everything(),names_from = Year, values_from = saturation) %>%
+      janitor::clean_names() %>%  
+      dplyr::mutate(change = log((x2016+10)/(x1990+10)))  %>%
+      dplyr::group_by(species) %>%
+      dplyr::summarise(medianChange = median(change), 
+                       lowerChange = quantile(change, 0.25),
+                       upperChange = quantile(change, 0.75))
+    
+  }else if(summary == "annual"){
+    
+    #summarise annual
+    temp %>%
+      dplyr::group_by(Species,Year) %>%
+      dplyr::summarise(medianArea = median(saturation), 
+                       lowerArea = quantile(saturation, 0.25),
+                       upperArea = quantile(saturation, 0.75))
+    
+  }
+  
 }
+
 
 
 ### ecoregion analysis ####

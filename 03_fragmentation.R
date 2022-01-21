@@ -9,6 +9,12 @@
 #install.packages("landscapemetrics")
 library(landscapemetrics)
 library(raster)
+library(ggthemes)
+library(cowplot)
+
+theme_set(theme_few())
+
+#as a fragmentation measure, we use the clumpiness index
 
 ### get data ####
 
@@ -20,6 +26,8 @@ PAs <- lapply(modelSummaries_Limits$mean, function(x) rbinom(50,1,x))
 PA_matrix <- do.call(rbind,PAs)
 
 ### fragmentation ####
+
+#of the distributions at each time step, and then the change of it
 
 #change
 fragChange <- lapply(allspecies[-c(1,64)],function(x){
@@ -54,61 +62,41 @@ fragAnnual %>%
 
 ggsave("plots/clumpiChange.png")
 
+### fragmentation of change ####
 
-### saturation #####
+#first get the change - then get the fragmentation of that
 
-#need to sort out units
-
-saturationDF <- lapply(allspecies[-c(1,64)],function(x){
-  applySaturation(x, modelSummaries_Limits, summary = "change")
-}) %>% reduce(rbind)
-
-saveRDS(saturationDF, file="outputs/satuationChange.rds")
+fragChange <- lapply(allspecies,function(x){
+  applyFragChange(x, modelSummaries_Limits)}) %>%
+  reduce(rbind)
+saveRDS(fragChange, file="outputs/clumpiChange_change.rds")
 
 ### relationship with AOCC ####
 
 areaChanges <- readRDS("outputs/areaChanges.rds")
 
-allChanges <- fragChanges %>%
+allChanges <- fragChange %>%
   rename(species = "Species") %>%
-  dplyr::select(species, change) %>%
-  filter(!duplicated(species)) %>%
   ungroup() %>%
   inner_join(.,areaChanges,
              by=c("species"),
              suffix = c("_frag","_area"))
 
-g1 <- ggplot(data = allChanges,
-             aes(x = medianChange,y = change)) + 
+allChanges %>%
+  filter(medianChange_frag>0) %>%
+  filter(class %in% c("increase","decrease")) %>%
+  ggplot(aes(x = medianChange_area, y = medianChange_frag)) + 
   geom_point() + 
-  geom_hline(yintercept=0,linetype="dashed")+
+  geom_errorbar(aes(ymin = lowerChange_frag,ymax = upperChange_frag)) + 
+  geom_errorbarh(aes(xmin = lowerChange_area, xmax = upperChange_area)) +
   stat_smooth(method="gam")+
+  #geom_hline(yintercept=0,linetype="dashed")+
   geom_vline(linetype="dashed",xintercept=0)+
-  xlab("Change in AOC") + ylab("Change in clumpiness")
-g1
+  xlab("Change in AOC") + ylab("Change in clumpiness")+
+  facet_wrap(~class)
 
-ggsave("plots/eoccChange_vs_clumpiChange.png")
-
-
-allChanges <- saturationDF  %>%
-  inner_join(.,areaChanges,
-             by=c("species"),
-             suffix = c("_sat","_area"))
-
-g2 <- ggplot(data = allChanges,
-             aes(x = medianChange_area,y = medianChange_sat)) + 
-  geom_point() + 
-  geom_hline(yintercept=0,linetype="dashed")+
-  stat_smooth(method="gam")+
-  geom_vline(linetype="dashed",xintercept=0)+
-  xlab("Change in AOC") + ylab("Change in saturation")
-
-g2
-
-
-plot_grid(g1,g2,ncol=2)
-
-ggsave("plots/clumpiness_vs_saturation.png",width=8, height=3)
+ggsave("plots/eoccChange_vs_clumpiChange_change.png",
+       width = 7.5, height = 3.5)
 
 ### Appendix: metric play ####
 

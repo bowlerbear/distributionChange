@@ -1,5 +1,6 @@
 library(tidyverse)
 library(ggthemes)
+library(sf)
 
 ### sMon folder ####
 
@@ -96,9 +97,10 @@ meanArea <- mean(area)
 totalArea <- as.numeric(sum(area))
 
 #get germany outline
-germanOutline <- raster::getData(name='GADM', country='DE',level=0) %>%
-  st_as_sf(germanOutline) %>%
-  st_transform(germanOutline,equalProj)
+germanOutline <- raster::getData(name='GADM', country='DE',level=0) 
+
+germanOutline <-   st_as_sf(germanOutline) %>%
+  st_transform(.,equalProj)
 
 #add on lon and lat
 modelSummaries$lon <- mtbsDF$lon[match(modelSummaries$MTB, mtbsDF$MTB)]

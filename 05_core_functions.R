@@ -1,4 +1,4 @@
-### simple functions ####
+### range area (AOO) ####
 
 getRangeArea <- function(species, modelSummaries_Limits){
   
@@ -16,151 +16,6 @@ getRangeArea <- function(species, modelSummaries_Limits){
   
 }
 
-getRangeExtents <- function(species, modelSummaries_Limits){
-  
-  speciesData <- subset(modelSummaries_Limits,Species==species)
-  
-  dat <- subset(speciesData, PA == 1)[,c("Species","PA","x_MTB","y_MTB","Year","MTB")]
-  #dat <- subset(speciesData, mean>0.1)[,c("x_MTB","y_MTB","Year","MTB")]
-
-  dat %>%
-    dplyr::group_by(Species,Year) %>%
-    dplyr::summarise(max_Y = max(y_MTB), 
-                     min_Y = min(y_MTB)) %>%
-    dplyr::ungroup()
-  
-}
-
-getConvexHull <- function(species, modelSummaries_Limits){
-  
-  speciesData <- subset(modelSummaries_Limits,Species==species)
-  
-  #put hull around data for each year
-  #dat <- subset(speciesData, mean>0.1)[,c("x_MTB","y_MTB","Year","MTB")]
-  dat <- subset(speciesData, PA == 1)[,c("x_MTB","y_MTB","Year","MTB")]
-  
-  allYears <- sort(unique(speciesData$Year))
-                   
-    rangeHull <- sapply(allYears,function(x){
-      
-      ydat <- dat[dat$Year==x,c("x_MTB","y_MTB")]
-      
-      if(nrow(ydat)>0 & length(unique(ydat$x_MTB))>2){
-        ch <- chull(ydat)
-        coords <- ydat[c(ch, ch[1]), ] 
-        plot(ydat, pch=19, main = species)
-        lines(coords, col="red")
-        sp_poly <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(coords)), 
-                                                         ID=1)),
-                                 proj4string=sp::CRS("+proj=utm +zone=32 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"))
-        
-          sp_poly_cut <- raster::intersect(sp_poly,germanOutline)#make sense or not??
-          rangeSize <- raster::area(sp_poly_cut)
-        
-        return(rangeSize)
-    }else {
-          return(0)
-        }})
-    
-    data.frame(Species = species, Year = allYears, rangeHull = rangeHull) 
-}
-
-
-getAlphaHull <- function(species, modelSummaries_Limits){
-  
-  speciesData <- subset(modelSummaries_Limits,Species==species)
-  
-  #put hull around data for each year
-  #dat <- subset(speciesData, mean>0.1)[,c("x_MTB","y_MTB","Year","MTB")]
-  dat <- subset(speciesData, PA == 1)[,c("x_MTB","y_MTB","Year","MTB")]
-  
-  allYears <- sort(unique(speciesData$Year))
-  
-  rangeAlpha <- sapply(allYears,function(x){
-    
-    ydat <- dat[dat$Year==x,c("x_MTB","y_MTB")]
-    
-    if(nrow(ydat)>0 & length(unique(ydat$x_MTB))>2){
-      
-      dist <- max(ydat$y_MTB)-min(ydat$y_MTB)
-      ah <- alphahull::ahull(ydat, alpha = dist)
-      #plot(ah, main = species)
-      alphahull::areaahull(ah)
-      
-    }else {
-      return(0)
-    }})
-    
-    data.frame(Species = species, Year = allYears, rangeAlpha = rangeAlpha) 
-  
-}
-
-
-getMCP <- function(species, modelSummaries_Limits){
-  
-  require(adehabitatHR)
-  require(sp)
-  
-  speciesData <- subset(modelSummaries_Limits,Species==species)
-  
-  #put hull around data for each year
-  #dat <- subset(speciesData, mean>0.1)[,c("x_MTB","y_MTB","Year","MTB")]
-  dat <- subset(speciesData, PA == 1)[,c("x_MTB","y_MTB","Year","MTB")]
-  
-  allYears <- sort(unique(speciesData$Year))
-  
-  rangeHull <- sapply(allYears,function(x){
-    
-    ydat <- dat[dat$Year==x,c("x_MTB","y_MTB")]
-    
-    if(nrow(ydat)>0 & length(unique(ydat$x_MTB))>4){
-      
-      mycoords <- ydat[,c("x_MTB","y_MTB")]
-      coordinates(mycoords) <- c("x_MTB","y_MTB")
-      proj4string(mycoords) <- CRS("+proj=utm +zone=32 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs")
-      ch <- mcp(mycoords, percent=99)
-      rangeSize <- ch@data$area
-      return(rangeSize)
-    }else {
-      return(0)
-    }})
-  
-  data.frame(Species = species, Year = allYears, rangeHull = rangeHull) 
-}
-
-getConcaveMan <- function(species, modelSummaries_Limits){
-
-  speciesData <- subset(modelSummaries_Limits,Species==species)
-  
-  #put hull around data for each year
-  #dat <- subset(speciesData, mean>0.1)[,c("x_MTB","y_MTB","Year","MTB")]
-  dat <- subset(speciesData, PA == 1)[,c("x_MTB","y_MTB","Year","MTB")]
-  
-  allYears <- sort(unique(speciesData$Year))
-  
-  rangeMan <- sapply(allYears,function(x){
-    
-    ydat <- dat[dat$Year==x,c("x_MTB","y_MTB")]
-    
-    if(nrow(ydat)>0 & length(unique(ydat$x_MTB))>2){
-      
-      ydat <- sf::st_as_sf(ydat, coords =c("x_MTB", "y_MTB"),crs = 25832)
-      sp_poly <- concaveman::concaveman(ydat)
-      germanOutline_sf <- st_transform(germanOutline, st_crs(ydat))
-      sp_poly_cut <- st_intersection(sp_poly, germanOutline_sf)
-      #plot(sp_poly_cut)
-      rangeSize <- as.numeric(st_area(sp_poly))#m2 units
-      return(rangeSize)
-      
-    }else {
-      return(0)
-    }})
-  
-    data.frame(Species = species, Year = allYears, rangeMan = rangeMan)
-    
-}
-
-### range area (AOO) ####
 
 applyRangeArea <- function(species, modelSummaries_Limits, summary = "change"){
   
@@ -202,6 +57,21 @@ applyRangeArea <- function(species, modelSummaries_Limits, summary = "change"){
 }
 
 ### latitudinal extents ####
+
+getRangeExtents <- function(species, modelSummaries_Limits){
+  
+  speciesData <- subset(modelSummaries_Limits,Species==species)
+  
+  dat <- subset(speciesData, PA == 1)[,c("Species","PA","x_MTB","y_MTB","Year","MTB")]
+  #dat <- subset(speciesData, mean>0.1)[,c("x_MTB","y_MTB","Year","MTB")]
+  
+  dat %>%
+    dplyr::group_by(Species,Year) %>%
+    dplyr::summarise(max_Y = max(y_MTB), 
+                     min_Y = min(y_MTB)) %>%
+    dplyr::ungroup()
+  
+}
 
 applyRangeExtent <- function(species, modelSummaries_Limits, summary="change"){
   
@@ -250,6 +120,135 @@ applyRangeExtent <- function(species, modelSummaries_Limits, summary="change"){
 }
 
 ### extent (EOCC) ####
+
+getConvexHull <- function(species, modelSummaries_Limits){
+  
+  speciesData <- subset(modelSummaries_Limits,Species==species)
+  
+  #put hull around data for each year
+  #dat <- subset(speciesData, mean>0.1)[,c("x_MTB","y_MTB","Year","MTB")]
+  dat <- subset(speciesData, PA == 1)[,c("x_MTB","y_MTB","Year","MTB")]
+  
+  allYears <- sort(unique(speciesData$Year))
+  
+  rangeHull <- sapply(allYears,function(x){
+    
+    ydat <- dat[dat$Year==x,c("x_MTB","y_MTB")]
+    
+    if(nrow(ydat)>0 & length(unique(ydat$x_MTB))>2){
+      ch <- chull(ydat)
+      coords <- ydat[c(ch, ch[1]), ] 
+      plot(ydat, pch=19, main = species)
+      lines(coords, col="red")
+      sp_poly <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(coords)), 
+                                                       ID=1)),
+                                     proj4string=sp::CRS("+proj=utm +zone=32 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"))
+      
+      sp_poly_cut <- raster::intersect(sp_poly,germanOutline)#make sense or not??
+      rangeSize <- raster::area(sp_poly_cut)
+      
+      return(rangeSize)
+    }else {
+      return(0)
+    }})
+  
+  data.frame(Species = species, Year = allYears, rangeHull = rangeHull) 
+}
+
+
+getAlphaHull <- function(species, modelSummaries_Limits){
+  
+  speciesData <- subset(modelSummaries_Limits,Species==species)
+  
+  #put hull around data for each year
+  #dat <- subset(speciesData, mean>0.1)[,c("x_MTB","y_MTB","Year","MTB")]
+  dat <- subset(speciesData, PA == 1)[,c("x_MTB","y_MTB","Year","MTB")]
+  
+  allYears <- sort(unique(speciesData$Year))
+  
+  rangeAlpha <- sapply(allYears,function(x){
+    
+    ydat <- dat[dat$Year==x,c("x_MTB","y_MTB")]
+    
+    if(nrow(ydat)>0 & length(unique(ydat$x_MTB))>2){
+      
+      dist <- max(ydat$y_MTB)-min(ydat$y_MTB)
+      ah <- alphahull::ahull(ydat, alpha = dist)
+      #plot(ah, main = species)
+      alphahull::areaahull(ah)
+      
+    }else {
+      return(0)
+    }})
+  
+  data.frame(Species = species, Year = allYears, rangeAlpha = rangeAlpha) 
+  
+}
+
+
+getMCP <- function(species, modelSummaries_Limits){
+  
+  require(adehabitatHR)
+  require(sp)
+  
+  speciesData <- subset(modelSummaries_Limits,Species==species)
+  
+  #put hull around data for each year
+  #dat <- subset(speciesData, mean>0.1)[,c("x_MTB","y_MTB","Year","MTB")]
+  dat <- subset(speciesData, PA == 1)[,c("x_MTB","y_MTB","Year","MTB")]
+  
+  allYears <- sort(unique(speciesData$Year))
+  
+  rangeHull <- sapply(allYears,function(x){
+    
+    ydat <- dat[dat$Year==x,c("x_MTB","y_MTB")]
+    
+    if(nrow(ydat)>0 & length(unique(ydat$x_MTB))>4){
+      
+      mycoords <- ydat[,c("x_MTB","y_MTB")]
+      coordinates(mycoords) <- c("x_MTB","y_MTB")
+      proj4string(mycoords) <- CRS("+proj=utm +zone=32 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs")
+      ch <- mcp(mycoords, percent=99)
+      rangeSize <- ch@data$area
+      return(rangeSize)
+    }else {
+      return(0)
+    }})
+  
+  data.frame(Species = species, Year = allYears, rangeHull = rangeHull) 
+}
+
+getConcaveMan <- function(species, modelSummaries_Limits){
+  
+  speciesData <- subset(modelSummaries_Limits,Species==species)
+  
+  #put hull around data for each year
+  #dat <- subset(speciesData, mean>0.1)[,c("x_MTB","y_MTB","Year","MTB")]
+  dat <- subset(speciesData, PA == 1)[,c("x_MTB","y_MTB","Year","MTB")]
+  
+  allYears <- sort(unique(speciesData$Year))
+  
+  rangeMan <- sapply(allYears,function(x){
+    
+    ydat <- dat[dat$Year==x,c("x_MTB","y_MTB")]
+    
+    if(nrow(ydat)>0 & length(unique(ydat$x_MTB))>2){
+      
+      ydat <- sf::st_as_sf(ydat, coords =c("x_MTB", "y_MTB"),crs = 25832)
+      sp_poly <- concaveman::concaveman(ydat)
+      germanOutline_sf <- st_transform(germanOutline, st_crs(ydat))
+      sp_poly_cut <- st_intersection(sp_poly, germanOutline_sf)
+      #plot(sp_poly_cut)
+      rangeSize <- as.numeric(st_area(sp_poly))#m2 units
+      return(rangeSize)
+      
+    }else {
+      return(0)
+    }})
+  
+  data.frame(Species = species, Year = allYears, rangeMan = rangeMan)
+  
+}
 
 applyConcaveMan <- function(species, modelSummaries_Limits, summary = "change"){
   

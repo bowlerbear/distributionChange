@@ -83,13 +83,13 @@ exampleData <- modelSummaries_Limits %>%
                                       "Sympetrum danae")) %>%
                 rename(Occupancy = "mean") 
 
-g1 <- ggplot(exampleData) +
+(g1 <- ggplot(exampleData) +
   geom_point(aes(x = x_MTB, y = y_MTB, colour = Occupancy)) +
   facet_grid(Year ~ Species) +
   theme_map() +
-  scale_colour_viridis_c(direction = -1)
+  scale_colour_viridis_c(option = "A", direction = 1))
 
-ggsave(g1,"plots/maps_examplespecies.png",height=6,width=10)
+ggsave("plots/maps_examplespecies.png",height=6,width=10)
 
 
 ### ecoregion analysis ####
@@ -128,3 +128,98 @@ ecoChange %>%
   ylab("Occupancy proportion")
 
 ggsave("plots/ecoChange.png",height=5.5,width=7)
+
+### lat extent ####
+
+#lat extent
+rangeExtents <- lapply(allspecies, function(x){
+  applyRangeExtent(x,modelSummaries_Limits)
+})%>%
+  reduce(rbind)
+saveRDS(rangeExtents,file="outputs/rangeExtents.rds")
+
+#plot
+rangeExtents %>%
+  filter(species %in% hullChanges$species[hullChanges$medianChange<10]) %>%
+  pivot_longer(contains("_"),names_to="type", values_to="change") %>%
+  separate(type, c("quantile","extent")) %>%
+  filter(quantile=="median") %>%
+  mutate(extent = ifelse(extent=="Max","upper","lower")) %>%
+  mutate(species = factor(species, levels(factor(hullChanges$species[hullChanges$medianChange<10])))) %>%
+  ggplot()+
+  geom_col(aes(x = species, y = change, fill=extent))+
+  scale_fill_brewer("Position",type="qual") +
+  ylab("Latitudinal extent change (m)")+
+  coord_flip()+
+  geom_hline(yintercept=0, linetype="dashed")+
+  theme(axis.text.y = element_text(size=rel(0.6)))
+
+ggsave("plots/latitudeChange.png")
+
+
+modelSummaries_Limits %>%
+  group_by(Species,Year) %>%
+  summarise(medianExtent = weighted.mean(y_MTB, mean)) %>%
+  mutate(medianExtent = medianExtent/1000) %>%
+  group_by(Species) %>%
+  mutate(change=medianExtent[Year==2016]-medianExtent[Year==1990]) %>%
+  ungroup()%>%
+  ggplot(aes(x=Year,y=medianExtent,group=Species,colour=change))+
+  scale_colour_gradient2(low="green",high="purple")+
+  geom_point(alpha=0.2)+
+  geom_line(size=2,alpha=0.5)+
+  scale_x_continuous(breaks=c(1990,2016),labels=c(1990,2016))+
+  theme(legend.position = "top") +
+  ylab("Extent position")
+g2
+
+ggsave("plots/nationextentChange.png")
+
+
+### case study species ####
+
+#change in range extent - contract, expand
+#only change in AOO
+
+areaChanges <- readRDS("outputs/areaChanges.rds")
+hullChanges <- readRDS("outputs/concavehullChanges.rds")
+
+allChanges <- inner_join(hullChanges,areaChanges,
+                         by=c("species"),
+                         suffix = c("_extent","_area"))
+ggplot(data = allChanges,
+              aes(x = medianChange_area,y = medianChange_extent)) + 
+    geom_text(aes(label=species))
+
+#Change in AOO and EOO
+#Increase - Aeshna affinis
+#Decrease - Nehalennia speciosa
+
+#Change in AOO but not EOO
+#Increase - Anax parthenope
+#Decrease - Sympetrum pedemontanum
+
+modelSummaries_Limits %>% 
+  filter(Species %in% c("Sympetrum pedemontanum")) %>%
+  rename(Occupancy = "mean") %>%
+  ggplot() +
+  geom_point(aes(x = x_MTB, y = y_MTB, colour = Occupancy)) +
+  facet_wrap(~ Year) +
+  theme_map() +
+  scale_colour_viridis_c(option = "A", direction = 1)+
+  theme(legend.position="none")
+
+
+#Change in saturation
+#Increase - 
+#Decrease - 
+
+#Core change
+#Increase in marginal - 
+#Decrease in core - 
+
+#clumpiness of change
+#Clumpy  - 
+#Non-clumpy - 
+
+### end ####

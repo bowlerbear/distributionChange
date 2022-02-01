@@ -17,25 +17,40 @@ library(sf)
 library(tidyverse)
 library(ggthemes)
 library(cowplot)
+library(ggpirate)
 
 theme_set(theme_few())
+options(scipen=10000)
 
 ### get data ####
 
 source("01_getModels.R")
 source("05_core_functions.R")
 
-### area ####
-
 #get realizations
 PAs <- lapply(modelSummaries_Limits$mean, function(x) rbinom(100,1,x))
 PA_matrix <- do.call(rbind,PAs)
 
+### area ####
+
 #area
 areaAnnual <- lapply(allspecies, function(x){
   applyRangeArea(x,modelSummaries_Limits, summary="annual")}) %>%
-  reduce(rbind)
-saveRDS(areaAnnual,file="outputs/areaCAnnual.rds")
+  reduce(rbind) 
+saveRDS(areaAnnual,file="outputs/areaAnnual.rds")
+
+# #check useful transformations
+# areaAnnual <- areaAnnual %>%
+#                 filter(Year %in% c(1990,2016)) %>%
+#                 select(Species,Year,medianArea) %>%
+#                 pivot_wider(names_from="Year", values_from="medianArea") %>%
+#                 janitor::clean_names()
+# 
+# temp <- areaAnnual %>%
+#           mutate(log_ratio = log(x2016/(x1990+1)),
+#                   log_ratio2 = log(x2016/(x1990+as.numeric(meanArea))),
+#                   perc_change = (x2016-x1990)/(x1990+as.numeric(meanArea)))
+
 
 areaChanges <- lapply(allspecies, function(x){
   applyRangeArea(x,modelSummaries_Limits)})%>%
@@ -61,18 +76,51 @@ nrow(subset(areaChanges, medianChange<0))
 summary(subset(areaChanges, medianChange>0)$medianChange)
 summary(subset(areaChanges, medianChange<0)$medianChange)
 
+#boxplots
+areaChanges <- readRDS("outputs/areaChanges.rds")
+areaChanges$Direction <- ifelse(areaChanges$medianChange>0,
+                                "Winners","Losers")
+                            
+(fig3b <- ggplot(areaChanges, aes(x = Direction, y = abs(medianChange)))+
+  geom_pirate(aes(colour = Direction),bars=FALSE)+
+  xlab("Direction of change") + ylab("|Change in AOO| (log-scale)")+
+  scale_y_log10()+
+  scale_colour_manual(values=c("deeppink","dodgerblue4")))
+
+saveRDS(fig2b, "plots/boxplot_areaChange.rds")
+
 ### concave hull ####
 
-#hull
+#hull - annual
+hullAnnual <- lapply(allspecies, function(x){
+  applyConcaveMan(x,modelSummaries_Limits, summary="annual")})%>%
+  reduce(rbind)
+saveRDS(hullAnnual,file="outputs/concavehullAnnual.rds")
+
+
+#check useful transformations
+# hullAnnual <- hullAnnual %>%
+#                 filter(Year %in% c(1990,2016)) %>%
+#                 select(Species,Year,medianArea) %>%
+#                 pivot_wider(names_from="Year", values_from="medianArea") %>%
+#                 janitor::clean_names()
+# 
+# temp <- hullAnnual %>%
+#           mutate(log_ratio = log(x2016/(x1990+1)),
+#                   log_ratio2 = log(x2016/(x1990+as.numeric(meanArea))),
+#                   perc_change = (x2016-x1990)/(x1990+as.numeric(meanArea)))
+
+
+#hull-changes
 hullChanges <- lapply(allspecies, function(x){
   applyConcaveMan(x,modelSummaries_Limits)})%>%
-  reduce(rbind)
+  reduce(rbind) %>%
   mutate(species = fct_reorder(species, desc(medianChange))) 
 saveRDS(hullChanges,file="outputs/concavehullChanges.rds")
 
 #plot
 hullChanges %>%
-  filter(medianChange < 10) %>%
+  #filter(medianChange < 10) %>%
   ggplot()+
   geom_pointrange(aes(x = species, y = medianChange, ymin = lowerChange, 
                       max = upperChange))+
@@ -90,13 +138,24 @@ nrow(subset(hullChanges, medianChange<0))
 summary(subset(hullChanges, medianChange>0)$medianChange)
 summary(subset(hullChanges, medianChange<0)$medianChange)
 
+#boxplots
+hullChanges$Direction <- areaChanges$Direction[match(hullChanges$species,
+                                                   areaChanges$species)]
+
+(fig3b.eocc <- ggplot(hullChanges, aes(x = Direction, y = abs(medianChange)))+
+    geom_pirate(aes(colour = Direction), bars=FALSE)+
+    xlab("Direction of change") + ylab("|Change in EOO| (log-scale)")+
+    scale_y_log10()+
+    scale_colour_manual(values=c("deeppink","dodgerblue4")))
+
+saveRDS(fig2b.eocc, "plots/boxplot_hullChange.rds")
+
 ### alpha hull ####
 
-#not work for 10, 14, 19 etc...
-hullChanges <- lapply(allspecies[15:68], function(x){
+hullChanges <- lapply(allspecies, function(x){
   applyAlphaHull(x,modelSummaries_Limits)
   print(x)
-  })%>%
+  }) %>%
   reduce(rbind) %>%
   mutate(species = fct_reorder(species, desc(medianChange))) 
 
@@ -130,59 +189,65 @@ bothChanges <- inner_join(hullChanges1,hullChanges2,
 qplot(medianChange_1, medianChange_2, data=bothChanges)
 #strongly correlated -2 is smaller!
 
-### lat extent ####
+### saturation #####
 
-#lat extent
-rangeExtents <- lapply(allspecies, function(x){
-  applyRangeExtent(x,modelSummaries_Limits)
-})%>%
-  reduce(rbind)
-saveRDS(rangeExtents,file="outputs/rangeExtents.rds")
+saturationChanges <- lapply(allspecies,function(x){
+  applySaturation(x, modelSummaries_Limits, summary = "change")
+}) %>% reduce(rbind)
 
-#plot
-rangeExtents %>%
-  filter(species %in% hullChanges$species[hullChanges$medianChange<10]) %>%
-  pivot_longer(contains("_"),names_to="type", values_to="change") %>%
-  separate(type, c("quantile","extent")) %>%
-  filter(quantile=="median") %>%
-  mutate(extent = ifelse(extent=="Max","upper","lower")) %>%
-  mutate(species = factor(species, levels(factor(hullChanges$species[hullChanges$medianChange<10])))) %>%
-  ggplot()+
-  geom_col(aes(x = species, y = change, fill=extent))+
-  scale_fill_brewer("Position",type="qual") +
-  ylab("Latitudinal extent change (m)")+
-  coord_flip()+
-  geom_hline(yintercept=0, linetype="dashed")+
-  theme(axis.text.y = element_text(size=rel(0.6)))
+saveRDS(saturationChanges, file="outputs/saturationChanges.rds")
 
-ggsave("plots/latitudeChange.png")
+#boxplots
+saturationChanges$Direction <- areaChanges$Direction[match(saturationChanges$species,
+                                                     areaChanges$species)]
+
+(g1 <- ggplot(saturationChanges, aes(x = Direction, y = abs(medianChange)))+
+    geom_pirate(aes(colour = Direction),bars=FALSE)+
+    xlab("Direction of change") + ylab("|Change in saturation|")+
+    scale_colour_manual(values=c("deeppink","dodgerblue4")))
+
+saveRDS(g1, "plots/boxplot_saturationChange.rds")
 
 ### relationships ####
 
-areaChanges <- readRDS("outputs/areaChanges.rds")
+#AOO vs EOO
 hullChanges <- readRDS("outputs/concavehullChanges.rds")
 
 allChanges <- inner_join(hullChanges,areaChanges,
                          by=c("species"),
                          suffix = c("_extent","_area"))
-allChanges$Direction <- ifelse(allChanges$medianChange_area>0, "Winner", "Losers")
 
-g1 <- ggplot(data = subset(allChanges, medianChange_extent<10),
-       aes(x = medianChange_area,y = medianChange_extent, colour=Direction)) + 
+(fig3c <- ggplot(data = allChanges,
+       aes(x = medianChange_area,y = medianChange_extent)) + 
   geom_point() + 
-  #geom_text(data=subset(allChanges,abs(medianChange_extent)>2),
-  #          aes(x = medianChange_area,y = medianChange_extent,label=Species))+
-  geom_errorbar(aes(ymin = lowerChange_extent,ymax = upperChange_extent, colour=Direction)) + 
-  geom_errorbarh(aes(xmin = lowerChange_area, xmax = upperChange_area, colour=Direction))+
+  geom_smooth(method="gam",se=FALSE, colour="grey") +
+  geom_errorbar(aes(ymin = lowerChange_extent,ymax = upperChange_extent)) + 
+  geom_errorbarh(aes(xmin = lowerChange_area, xmax = upperChange_area))+
+  scale_colour_viridis_c()+
   geom_hline(linetype="dashed",yintercept=0)+
   geom_vline(linetype="dashed",xintercept=0)+
-  scale_color_viridis_d()+
-  xlab("Change in AOO") + ylab("Change in EOO")+
-  theme_few()
-g1
+  xlab("Change in AOO") + ylab("Change in EOO"))
 
 ggsave("plots/eoccChange_vs_aoccChange.png")
 
+#AOO vs Saturation
+saturationChanges <- readRDS("outputs/saturationChanges.rds")
+
+allChanges <- saturationChanges  %>%
+  inner_join(.,areaChanges,
+             by=c("species"),
+             suffix = c("_sat","_area"))
+
+(fig3c.eocc <- ggplot(data = subset(allChanges, medianChange_sat>(-6)),
+              aes(x = medianChange_area,y = medianChange_sat)) + 
+    geom_point() + 
+    geom_smooth(method="gam", se=FALSE, colour="black") +
+    geom_errorbar(aes(ymin = lowerChange_sat,ymax = upperChange_sat)) + 
+    geom_errorbarh(aes(xmin = lowerChange_area, xmax = upperChange_area))+
+    geom_hline(linetype="dashed",yintercept=0)+
+    geom_vline(linetype="dashed",xintercept=0)+
+    xlab("Change in AOO") + ylab("Change in saturation (AOO/EOO)")+
+    theme_few())
 
 ### regression ####
 
@@ -233,10 +298,6 @@ ggsave("plots/eoccChange_vs_aoccChange.png", width = 7, height = 4)
 
 ### species ts ####
 
-#get realizations
-PAs <- lapply(modelSummaries$mean, function(x) rbinom(100,1,x))
-PA_matrix <- do.call(rbind,PAs)
-
 #pick species
 myspecies <- "Crocothemis erythraea"
 
@@ -273,50 +334,48 @@ ggsave("plots/example_ts.png")
 ### nationwide-mean ####
 
 #occupancy area
-g1 <- modelSummaries_Limits %>%
+(aocc <- modelSummaries_Limits %>%
   group_by(Species,Year) %>%
-  summarise(prop = sum(mean)/length(mean))%>%
-  mutate(area = prop * totalArea/1000000000) %>%
+  summarise(area= sum(mean)*as.numeric(meanArea))%>%
+  mutate(area = area/1000000000) %>%
   group_by(Species) %>%
   mutate(change=(area[Year==2016]-area[Year==1990]))%>%
   ungroup()%>%
   ggplot(aes(x=Year,y=area,group=Species,colour=change))+
-  scale_colour_gradient2(low="green",high="purple")+
-  geom_point(alpha=0.2)+
+  scale_colour_gradient2(low="deeppink",mid="grey99",high="dodgerblue4")+
+  geom_point(size=4,alpha=0.9)+
   geom_line(size=2,alpha=0.5)+
   scale_x_continuous(breaks=c(1990,2016),labels=c(1990,2016))+
   theme(legend.position = "top") +
-  ylab("Area of occupancy")
-g1
-ggsave("plots/nationareaChange.png")
+  ylab("Area of occupancy"))
 
+#extent of occupancy
 
-#occupancy extent
+hullAnnual <- readRDS("outputs/concavehullAnnual.rds")
 
-
-
-#extent position
-g2 <- modelSummaries_Limits %>%
-  group_by(Species,Year) %>%
-  summarise(medianExtent = weighted.mean(y_MTB, mean)) %>%
-  mutate(medianExtent = medianExtent/1000) %>%
+(eocc <- hullAnnual %>%
   group_by(Species) %>%
-  mutate(change=medianExtent[Year==2016]-medianExtent[Year==1990]) %>%
+  mutate(medianArea = medianArea/1000000000,
+         change=(medianArea[Year==2016]-medianArea[Year==1990])) %>%
   ungroup()%>%
-  ggplot(aes(x=Year,y=medianExtent,group=Species,colour=change))+
-  scale_colour_gradient2(low="green",high="purple")+
-  geom_point(alpha=0.2)+
+  ggplot(aes(x=Year,y=medianArea,group=Species,colour=change))+
+  scale_colour_gradient2(low="deeppink",mid="grey97",high="dodgerblue4")+
+  geom_point(size=4,alpha=0.9)+
   geom_line(size=2,alpha=0.5)+
   scale_x_continuous(breaks=c(1990,2016),labels=c(1990,2016))+
   theme(legend.position = "top") +
-  ylab("Extent position")
-g2
+  ylab("Extent of occupancy"))
 
-ggsave("plots/nationextentChange.png")
+
+### fig. 3 ####
 
 #plot together
-plot_grid(g1,g2,ncol=2)
+top <- plot_grid(aocc,eocc,ncol=2)
+middle <- plot_grid(fig3b,fig3b.eocc,ncol=2)
+bottom <- plot_grid(fig3c,fig3c.eocc,ncol=2)
 
-ggsave("plots/nationChange.png",width=7, height=4)
+plot_grid(top,middle,bottom,nrow=3)
+
+ggsave("plots/Fig.3.png",width=7.5, height=9)
 
 ### end ####

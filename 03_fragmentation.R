@@ -27,76 +27,99 @@ PA_matrix <- do.call(rbind,PAs)
 
 ### fragmentation ####
 
-#of the distributions at each time step, and then the change of it
+# #of the distributions at each time step, and then the change of it
+# 
+# #change
+# fragChange <- lapply(allspecies[-c(1,64)],function(x){
+#   applyFragStats(x, modelSummaries_Limits)}) %>% 
+#   reduce(rbind) %>%
+#   filter(class == 1) %>%
+#   filter(name == "clumpiness index") 
+# 
+# saveRDS(fragChange, file="outputs/clumpiChange.rds")
+# 
+# #annual
+# fragAnnual <- lapply(allspecies[-c(1,64)],function(x){
+#   applyFragStats(x, modelSummaries_Limits, summary = "annual")}) %>% 
+#   reduce (rbind) %>%
+#   filter(class == 1) %>%
+#   filter(name == "clumpiness index") %>%
+#   group_by(Species) %>%
+#   filter(Species!="Gomphus flavipes") %>%
+#   mutate(change = (log(medianMetric[Year==2016])- log((medianMetric[Year==1990]))))
+# 
+# saveRDS(fragAnnual, file="outputs/clumpiAnnual.rds")
+# 
+# #plotting
+# fragAnnual %>%
+#   filter(medianMetric > (-1)) %>%
+#   ggplot(aes(x=Year,y=medianMetric,group=Species,colour=change))+
+#   scale_colour_gradient2(low="green",high="purple")+ 
+#   geom_point()+
+#   geom_line(size=2)+
+#   scale_x_continuous(breaks=c(1990,2016),labels=c(1990,2016))+
+#   ylab("Clumpiness")
+# 
+# ggsave("plots/clumpiChange.png")
 
-#change
-fragChange <- lapply(allspecies[-c(1,64)],function(x){
-  applyFragStats(x, modelSummaries_Limits)}) %>% 
-  reduce(rbind) %>%
-  filter(class == 1) %>%
-  filter(name == "clumpiness index") 
-
-saveRDS(fragChange, file="outputs/clumpiChange.rds")
-
-#annual
-fragAnnual <- lapply(allspecies[-c(1,64)],function(x){
-  applyFragStats(x, modelSummaries_Limits, summary = "annual")}) %>% 
-  reduce (rbind) %>%
-  filter(class == 1) %>%
-  filter(name == "clumpiness index") %>%
-  group_by(Species) %>%
-  filter(Species!="Gomphus flavipes") %>%
-  mutate(change = (log(medianMetric[Year==2016])- log((medianMetric[Year==1990]))))
-
-saveRDS(fragAnnual, file="outputs/clumpiAnnual.rds")
-
-#plotting
-fragAnnual %>%
-  filter(medianMetric > (-1)) %>%
-  ggplot(aes(x=Year,y=medianMetric,group=Species,colour=change))+
-  scale_colour_gradient2(low="green",high="purple")+ 
-  geom_point()+
-  geom_line(size=2)+
-  scale_x_continuous(breaks=c(1990,2016),labels=c(1990,2016))+
-  ylab("Clumpiness")
-
-ggsave("plots/clumpiChange.png")
-
-### fragmentation of change ####
+### change fragmentation ####
 
 #first get the change - then get the fragmentation of that
 
-fragChange <- lapply(allspecies,function(x){
+fragChanges <- lapply(allspecies,function(x){
   applyFragChange(x, modelSummaries_Limits)}) %>%
-  reduce(rbind)
-saveRDS(fragChange, file="outputs/clumpiChange_change.rds")
+  reduce(rbind) %>%
+  rename(species = "Species")
+saveRDS(fragChanges, file="outputs/clumpiChange_change.rds")
+
+
+#boxplots
+fragChanges <- readRDS("outputs/clumpiChange_change.rds")
+fragChanges$Direction <- areaChanges$Direction[match(fragChanges$species,
+                                                    areaChanges$species)]
+  
+(g1 <- fragChanges %>%
+    filter(medianChange>0) %>%
+    filter(!is.na(Direction)) %>% #check why we need this
+    ggplot(aes(x = Direction, y = medianChange))+
+    geom_pirate(aes(colour = Direction),bars=FALSE)+
+    xlab("Direction of change") + ylab("Clumpiness of change (log-scale)")+
+    scale_y_log10()+
+    scale_colour_manual(values=c("deeppink","dodgerblue4")))
+
+saveRDS(g1, "plots/boxplot_fragChange_change.rds")
 
 ### relationship with AOCC ####
 
 areaChanges <- readRDS("outputs/areaChanges.rds")
 
-allChanges <- fragChange %>%
-  rename(species = "Species") %>%
+allChanges <- fragChanges %>%
   ungroup() %>%
   inner_join(.,areaChanges,
              by=c("species"),
              suffix = c("_frag","_area"))
 
-allChanges %>%
+(g2 <- allChanges %>%
   filter(medianChange_frag>0) %>%
-  filter(class %in% c("increase","decrease")) %>%
+  filter(class =="change") %>%
+  #filter(class %in% c("increase","decrease")) %>%
   ggplot(aes(x = medianChange_area, y = medianChange_frag)) + 
   geom_point() + 
   geom_errorbar(aes(ymin = lowerChange_frag,ymax = upperChange_frag)) + 
   geom_errorbarh(aes(xmin = lowerChange_area, xmax = upperChange_area)) +
-  stat_smooth(method="gam")+
+  stat_smooth(method="gam", se=FALSE, colour="black")+
   #geom_hline(yintercept=0,linetype="dashed")+
   geom_vline(linetype="dashed",xintercept=0)+
-  xlab("Change in AOC") + ylab("Change in clumpiness")+
-  facet_wrap(~class)
+  xlab("Change in AOO") + ylab("Clumpiness of change"))
 
 ggsave("plots/eoccChange_vs_clumpiChange_change.png",
        width = 7.5, height = 3.5)
+
+### fig. 4 ####
+
+plot_grid(g1,g2,nrow=2)
+ggsave("plots/Fig.4.png",
+       width = 6.5, height = 6)
 
 ### Appendix: metric play ####
 

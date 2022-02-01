@@ -4,7 +4,8 @@ library(sf)
 
 ### sMon folder ####
 
-sMonFolder <- "C:/Users/db40fysa/Nextcloud/sMon/sMon-Analyses/Odonata_Git/sMon-insects"
+#sMonFolder <- "C:/Users/db40fysa/Nextcloud/sMon/sMon-Analyses/Odonata_Git/sMon-insects"
+sMonFolder <- "I:/sMon/sMon-Analyses/Odonata_Git/sMon-insects"
 
 ### mtbq info ####
 
@@ -14,7 +15,7 @@ mtbsDF <- subset(mtbqsDF,!duplicated(MTB))
 
 #### choose model directory ####
 
-modelDirectory <- paste(sMonFolder,"model-outputs/Odonata_stan_spline/v17",sep="/")
+modelDirectory <- paste(sMonFolder,"model-outputs/Odonata_stan_spline/v18",sep="/")
 
 ### get list of models ####
 
@@ -80,7 +81,7 @@ sort(unique(modelSummaries$Species))
 #remove S. flaveolum - migratory and fluctuates alot!
 modelSummaries <- subset(modelSummaries, Species!="Sympetrum flaveolum")
 
-#weird maps at the moment - check later
+#weird maps - species too rare prob
 modelSummaries <- subset(modelSummaries, !Species %in% c("Anax ephippiger",
                                                          "Boyeria irene"))
 
